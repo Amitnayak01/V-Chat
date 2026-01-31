@@ -1,18 +1,17 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { socket } from "../socket";
-import React from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function VideoCall() {
   const localRef = useRef();
   const remoteRef = useRef();
-const pc = useRef(
-  new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" }
-    ]
-  })
-);
+  const nav = useNavigate();
 
+  const pc = useRef(
+    new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    })
+  );
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
@@ -28,7 +27,7 @@ const pc = useRef(
       socket.emit("offer", offer);
     });
 
-    socket.on("offer", async (offer) => {
+    socket.on("offer", async offer => {
       await pc.current.setRemoteDescription(offer);
       const answer = await pc.current.createAnswer();
       await pc.current.setLocalDescription(answer);
@@ -36,18 +35,35 @@ const pc = useRef(
     });
 
     socket.on("answer", answer => pc.current.setRemoteDescription(answer));
-    socket.on("ice-candidate", candidate =>
-      pc.current.addIceCandidate(new RTCIceCandidate(candidate))
+    socket.on("ice-candidate", c =>
+      pc.current.addIceCandidate(new RTCIceCandidate(c))
     );
 
-    pc.current.onicecandidate = e => e.candidate && socket.emit("ice-candidate", e.candidate);
+    pc.current.onicecandidate = e =>
+      e.candidate && socket.emit("ice-candidate", e.candidate);
+
     pc.current.ontrack = e => (remoteRef.current.srcObject = e.streams[0]);
   }, []);
 
   return (
-    <div className="video-container">
-      <video ref={localRef} autoPlay muted />
-      <video ref={remoteRef} autoPlay />
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => nav("/profile")}
+        style={{
+          position: "absolute",
+          top: 10,
+          right: 10,
+          zIndex: 10,
+          padding: "6px 10px"
+        }}
+      >
+        Profile
+      </button>
+
+      <div className="video-container">
+        <video ref={localRef} autoPlay muted />
+        <video ref={remoteRef} autoPlay />
+      </div>
     </div>
   );
 }

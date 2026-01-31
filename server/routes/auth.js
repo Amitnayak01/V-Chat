@@ -4,6 +4,14 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const router = express.Router();
 
+const authMiddleware = require("../middleware/authMiddleware");
+
+router.get("/me", authMiddleware, async (req, res) => {
+  const user = await User.findById(req.user.id).select("username");
+  res.json({ username: user.username });
+});
+
+
 router.post("/signup", async (req, res) => {
   const { username, password } = req.body;
   const hash = await bcrypt.hash(password, 10);

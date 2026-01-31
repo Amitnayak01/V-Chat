@@ -1,5 +1,4 @@
-import React from "react";
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import api from "../api";
 import { useNavigate, Link } from "react-router-dom";
 
@@ -7,6 +6,12 @@ export default function Login() {
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const nav = useNavigate();
+
+  useEffect(() => {
+    if (localStorage.getItem("token")) {
+      nav("/call");
+    }
+  }, []);
 
   const login = async () => {
     const res = await api.post("/auth/login", { username: u, password: p });
@@ -21,7 +26,6 @@ export default function Login() {
       <input type="password" placeholder="Password" onChange={e => setP(e.target.value)} />
       <button onClick={login}>Login</button>
 
-      {/* 🔹 ADD THIS */}
       <p style={{ marginTop: "10px" }}>
         Don't have an account? <Link to="/signup">Signup</Link>
       </p>
