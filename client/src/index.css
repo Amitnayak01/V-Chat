@@ -1,0 +1,5 @@
+body { margin:0; font-family:sans-serif; background:#121212; color:white; }
+.center { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+input, button { margin:8px; padding:10px; width:200px; }
+.video-container { display:flex; gap:10px; justify-content:center; padding:20px; }
+video { width:45%; background:black; border-radius:10px; }
