@@ -517,9 +517,9 @@ export default function VideoCall() {
 
         .controls {
           display: flex;
-          gap: clamp(8px, 2vw, 16px);
+          gap: clamp(10px, 2.5vw, 18px);
           align-items: center;
-          padding: clamp(12px, 3vw, 20px) clamp(16px, 4vw, 32px);
+          padding: clamp(14px, 3.5vw, 22px) clamp(20px, 5vw, 36px);
           background: rgba(15, 23, 42, 0.95);
           border-radius: 60px;
           border: 1px solid rgba(255, 255, 255, 0.1);
@@ -529,21 +529,28 @@ export default function VideoCall() {
 
         @media (max-width: 768px) {
           .controls {
-            padding: 10px 14px;
+            padding: 10px 16px;
             gap: 8px;
           }
         }
 
         @media (max-width: 480px) {
           .controls {
-            padding: 10px 12px;
+            padding: 10px 14px;
             gap: 6px;
           }
         }
 
+        @media (max-width: 380px) {
+          .controls {
+            padding: 8px 12px;
+            gap: 5px;
+          }
+        }
+
         .control-btn {
-          width: clamp(44px, 10vw, 56px);
-          height: clamp(44px, 10vw, 56px);
+          width: clamp(50px, 11vw, 60px);
+          height: clamp(50px, 11vw, 60px);
           border-radius: 50%;
           background: rgba(255, 255, 255, 0.1);
           border: 1px solid rgba(255, 255, 255, 0.15);
@@ -556,10 +563,24 @@ export default function VideoCall() {
           flex-shrink: 0;
         }
 
+        @media (max-width: 768px) {
+          .control-btn {
+            width: 50px;
+            height: 50px;
+          }
+        }
+
         @media (max-width: 480px) {
           .control-btn {
-            width: 48px;
-            height: 48px;
+            width: 46px;
+            height: 46px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .control-btn {
+            width: 42px;
+            height: 42px;
           }
         }
 
@@ -579,17 +600,31 @@ export default function VideoCall() {
         }
 
         .control-btn.end-call {
-          width: clamp(52px, 12vw, 68px);
-          height: clamp(52px, 12vw, 68px);
+          width: clamp(60px, 13vw, 72px);
+          height: clamp(60px, 13vw, 72px);
           background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
           border: none;
           box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
         }
 
+        @media (max-width: 768px) {
+          .control-btn.end-call {
+            width: 58px;
+            height: 58px;
+          }
+        }
+
         @media (max-width: 480px) {
           .control-btn.end-call {
-            width: 56px;
-            height: 56px;
+            width: 54px;
+            height: 54px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .control-btn.end-call {
+            width: 50px;
+            height: 50px;
           }
         }
 
@@ -600,6 +635,18 @@ export default function VideoCall() {
 
         @media (max-width: 768px) {
           .control-btn svg {
+            width: 20px;
+            height: 20px;
+          }
+          
+          .control-btn.end-call svg {
+            width: 24px;
+            height: 24px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .control-btn svg {
             width: 18px;
             height: 18px;
           }
@@ -607,6 +654,18 @@ export default function VideoCall() {
           .control-btn.end-call svg {
             width: 22px;
             height: 22px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .control-btn svg {
+            width: 17px;
+            height: 17px;
+          }
+          
+          .control-btn.end-call svg {
+            width: 20px;
+            height: 20px;
           }
         }
 
@@ -719,7 +778,13 @@ export default function VideoCall() {
           }
           
           .controls {
-            max-width: 90vw;
+            max-width: 95vw;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .controls {
+            max-width: 98vw;
           }
         }
 
@@ -830,7 +895,7 @@ export default function VideoCall() {
               className={`control-btn ${isMuted ? 'active' : ''}`}
               title={isMuted ? "Unmute" : "Mute"}
             >
-              {isMuted ? <MicOff size={isMobile ? 18 : 22} color="#fff" /> : <Mic size={isMobile ? 18 : 22} color="#fff" />}
+              {isMuted ? <MicOff size={isMobile ? 20 : 22} color="#fff" /> : <Mic size={isMobile ? 20 : 22} color="#fff" />}
             </button>
 
             <button 
@@ -838,7 +903,7 @@ export default function VideoCall() {
               className={`control-btn ${isVideoOff ? 'active' : ''}`}
               title={isVideoOff ? "Turn on camera" : "Turn off camera"}
             >
-              {isVideoOff ? <VideoOff size={isMobile ? 18 : 22} color="#fff" /> : <Video size={isMobile ? 18 : 22} color="#fff" />}
+              {isVideoOff ? <VideoOff size={isMobile ? 20 : 22} color="#fff" /> : <Video size={isMobile ? 20 : 22} color="#fff" />}
             </button>
 
             <button 
@@ -846,7 +911,7 @@ export default function VideoCall() {
               className="control-btn end-call"
               title="End call"
             >
-              <PhoneOff size={isMobile ? 22 : 26} color="#fff" />
+              <PhoneOff size={isMobile ? 24 : 26} color="#fff" />
             </button>
 
             <button 
@@ -854,7 +919,7 @@ export default function VideoCall() {
               className={`control-btn ${isSpeakerOff ? 'active' : ''}`}
               title={isSpeakerOff ? "Unmute speaker" : "Mute speaker"}
             >
-              {isSpeakerOff ? <VolumeX size={isMobile ? 18 : 22} color="#fff" /> : <Volume2 size={isMobile ? 18 : 22} color="#fff" />}
+              {isSpeakerOff ? <VolumeX size={isMobile ? 20 : 22} color="#fff" /> : <Volume2 size={isMobile ? 20 : 22} color="#fff" />}
             </button>
 
             <button 
@@ -862,7 +927,7 @@ export default function VideoCall() {
               className={`control-btn ${isScreenSharing ? 'active' : ''}`}
               title={isScreenSharing ? "Stop sharing" : "Share screen"}
             >
-              <Monitor size={isMobile ? 18 : 22} color="#fff" />
+              <Monitor size={isMobile ? 20 : 22} color="#fff" />
             </button>
           </div>
         </div>
