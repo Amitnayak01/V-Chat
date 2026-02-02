@@ -140,6 +140,39 @@ export default function VideoCall() {
     return () => clearInterval(interval);
   }, [callState]);
 
+  // Auto-play remote video when stream is available
+  useEffect(() => {
+    if (!hasRemoteStream || !remoteVideo.current) return;
+
+    console.log("🎬 Attempting to play remote video...");
+    
+    const attemptPlay = () => {
+      if (remoteVideo.current && remoteVideo.current.paused) {
+        console.log("⏯️ Remote video is paused, attempting play...");
+        const playPromise = remoteVideo.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              console.log("✅ Remote video playing successfully");
+              setShowPlayButton(false);
+            })
+            .catch(error => {
+              console.error("❌ Error playing remote video:", error);
+              console.log("⚠️ Autoplay blocked - showing play button");
+              setShowPlayButton(true);
+            });
+        }
+      } else {
+        console.log("ℹ️ Remote video already playing");
+      }
+    };
+
+    // Small delay to ensure srcObject is fully set
+    const timer = setTimeout(attemptPlay, 100);
+    
+    return () => clearTimeout(timer);
+  }, [hasRemoteStream]);
+
   const setupMedia = async (videoEnabled = true) => {
     try {
       console.log("🎥 Requesting media devices...");
@@ -209,34 +242,6 @@ export default function VideoCall() {
           console.log("✅ Setting remote video srcObject");
           remoteVideo.current.srcObject = stream;
           setHasRemoteStream(true);
-          
-          // Force play with user interaction fallback
-          const attemptPlay = () => {
-            if (remoteVideo.current && remoteVideo.current.paused) {
-              const playPromise = remoteVideo.current.play();
-              if (playPromise !== undefined) {
-                playPromise
-                  .then(() => {
-                    console.log("✅ Remote video playing successfully");
-                    setShowPlayButton(false);
-                  })
-                  .catch(error => {
-                    console.error("❌ Error playing remote video:", error);
-                    console.log("⚠️ Autoplay blocked - showing play button");
-                    setShowPlayButton(true);
-                  });
-              }
-            }
-          };
-          
-          // Set loadedmetadata event to ensure video is ready
-          remoteVideo.current.onloadedmetadata = () => {
-            console.log("✅ Remote video metadata loaded");
-            attemptPlay();
-          };
-          
-          // Try to play immediately
-          attemptPlay();
         } else if (remoteVideo.current && remoteVideo.current.srcObject) {
           console.log("ℹ️ Remote video srcObject already set, skipping to avoid AbortError");
         }
@@ -723,11 +728,17 @@ export default function VideoCall() {
           ref={remoteVideo}
           autoPlay
           playsInline
+          muted={false}
           style={{
             width: '100%',
             height: '100%',
             objectFit: 'cover'
           }}
+          onLoadedMetadata={() => console.log("🎬 Remote video onLoadedMetadata event fired")}
+          onPlay={() => console.log("▶️ Remote video onPlay event fired")}
+          onPlaying={() => console.log("▶️ Remote video onPlaying event fired")}
+          onPause={() => console.log("⏸️ Remote video onPause event fired")}
+          onError={(e) => console.error("❌ Remote video error:", e)}
         />
 
         {/* No Remote Stream Indicator */}
