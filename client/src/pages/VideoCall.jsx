@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useCall } from "../CallContext";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Monitor, Grid, Volume2, VolumeX, Maximize, Minimize, User, Wifi, WifiOff } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Monitor, Grid, Volume2, VolumeX, Maximize, Minimize, User, Wifi, WifiOff, UserPlus } from "lucide-react";
 import { RefreshCcw } from "lucide-react";
+import AddParticipantModal from "./AddParticipantModal";
 
 
 const ICE_CONFIG = {
@@ -45,8 +46,71 @@ export default function VideoCall() {
   const [showControls, setShowControls] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [cameraFacing, setCameraFacing] = useState("user"); // "user" = front, "environment" = back
+  const [isLocalFullscreen, setIsLocalFullscreen] = useState(false);
+  const [showAddParticipant, setShowAddParticipant] = useState(false);
+ 
+  const pipRef = useRef(null);
+const [pipPosition, setPipPosition] = useState({ x: 0, y: 0 });
+const dragData = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
 
-  
+const startDrag = (e) => {
+  if (layoutMode !== "focus" || isLocalFullscreen) return;
+
+  const rect = pipRef.current.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  dragData.current = {
+    dragging: true,
+    offsetX: clientX - rect.left,
+    offsetY: clientY - rect.top
+  };
+};
+
+const onDrag = (e) => {
+  if (!dragData.current.dragging) return;
+
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  const x = clientX - dragData.current.offsetX;
+  const y = clientY - dragData.current.offsetY;
+
+  setPipPosition({ x, y });
+};
+
+const endDrag = () => {
+  if (!dragData.current.dragging) return;
+  dragData.current.dragging = false;
+
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
+  const rect = pipRef.current.getBoundingClientRect();
+
+  // Snap logic
+  const snapX = rect.left < screenW / 2 ? 16 : screenW - rect.width - 16;
+  const snapY = rect.top < screenH / 2 ? 16 : screenH - rect.height - 120;
+
+  setPipPosition({ x: snapX, y: snapY });
+};
+
+
+useEffect(() => {
+  window.addEventListener("mousemove", onDrag);
+  window.addEventListener("mouseup", endDrag);
+  window.addEventListener("touchmove", onDrag);
+  window.addEventListener("touchend", endDrag);
+  return () => {
+    window.removeEventListener("mousemove", onDrag);
+    window.removeEventListener("mouseup", endDrag);
+    window.removeEventListener("touchmove", onDrag);
+    window.removeEventListener("touchend", endDrag);
+  };
+}, []);
+
+
+
+
   // Detect mobile
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
@@ -827,6 +891,67 @@ export default function VideoCall() {
           }
         }
 
+
+
+        .video-layout.grid-mode {
+  display: grid;
+  width: 100%;
+  height: 100%;
+}
+
+/* Desktop → side by side */
+@media (min-width: 769px) {
+  .video-layout.grid-mode {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+  }
+}
+
+/* Mobile → top bottom split */
+@media (max-width: 768px) {
+  .video-layout.grid-mode {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .video-layout.grid-mode .remote-video-container,
+  .video-layout.grid-mode .local-video-container {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+    bottom: auto !important;
+    right: auto !important;
+  }
+}
+
+
+
+
+        /* Swap videos when local is fullscreen */
+.video-layout.local-full .local-video-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0;
+  z-index: 10;
+}
+
+.video-layout.local-full .remote-video-container {
+  position: absolute;
+  bottom: clamp(80px, 15vh, 140px);
+  right: clamp(12px, 3vw, 30px);
+  width: clamp(120px, 25vw, 280px);
+  height: clamp(90px, 18vw, 200px);
+  border-radius: clamp(12px, 2vw, 20px);
+  overflow: hidden;
+  border: 3px solid rgba(255,255,255,0.2);
+  z-index: 50;
+}
+
+
         /* Hide scrollbar */
         ::-webkit-scrollbar { display: none; }
       `}</style>
@@ -852,12 +977,23 @@ export default function VideoCall() {
             )}
           </div>
           <div className="header-actions">
-            {!isMobile && (
-              <button onClick={() => setLayoutMode(m => m === "focus" ? "grid" : "focus")} 
-                      className="control-btn" title="Toggle layout">
-                <Grid size={20} color="#fff" />
+          {callState === "connected" && (
+              <button 
+                onClick={() => setShowAddParticipant(true)} 
+                className="control-btn" 
+                title="Add to Call"
+              >
+                <UserPlus size={isMobile ? 18 : 20} color="#fff" />
               </button>
             )}
+          <button 
+  onClick={() => setLayoutMode(m => m === "focus" ? "grid" : "focus")} 
+  className="control-btn" 
+  title="Split Screen"
+>
+  <Grid size={isMobile ? 18 : 20} color="#fff" />
+</button>
+
             <button
   onClick={switchCamera}
   className="control-btn"
@@ -874,9 +1010,12 @@ export default function VideoCall() {
       </div>
 
       {/* Video Layout */}
-      <div className={`video-layout ${layoutMode === "grid" ? "grid-mode" : ""}`}>
+      <div className={`video-layout ${layoutMode === "grid" ? "grid-mode" : ""} ${isLocalFullscreen ? "local-full" : ""}`}>
         {/* Remote Video */}
-        <div className="remote-video-container">
+        <div 
+  className="remote-video-container"
+  onClick={() => setIsLocalFullscreen(f => !f)}
+>
           <video ref={remoteVideo} autoPlay playsInline className="remote-video" />
           
           {!hasRemoteStream && callState === "connected" && (
@@ -899,7 +1038,23 @@ export default function VideoCall() {
         </div>
 
         {/* Local Video (PiP) */}
-        <div className="local-video-container fade-in">
+  <div
+  ref={pipRef}
+  className="local-video-container fade-in"
+  onMouseDown={startDrag}
+  onTouchStart={startDrag}
+  style={
+    layoutMode === "focus" && !isLocalFullscreen
+      ? {
+          position: "absolute",
+          left: pipPosition.x || undefined,
+          top: pipPosition.y || undefined
+        }
+      : {}
+  }
+>
+
+
           <video ref={localVideo} autoPlay muted playsInline className="local-video" />
           {isVideoOff && (
             <div className="video-placeholder">
@@ -979,6 +1134,14 @@ export default function VideoCall() {
           </div>
         </div>
       )}
+
+      {/* Add Participant Modal */}
+      <AddParticipantModal 
+        isOpen={showAddParticipant}
+        onClose={() => setShowAddParticipant(false)}
+        currentCallUserId={targetUserId}
+        currentCallUsername={targetUsername}
+      />
     </div>
   );
 }

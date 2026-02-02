@@ -54,8 +54,9 @@ router.get("/me", authMiddleware, async (req, res) => {
 
 
 
+// ✅ UPDATED: Now includes _id and bio for AddParticipantModal
 router.get("/users", authMiddleware, async (req, res) => {
-  const users = await User.find().select("username profilePic");
+  const users = await User.find().select("_id username profilePic bio createdAt");
   res.json(users);
 });
 
