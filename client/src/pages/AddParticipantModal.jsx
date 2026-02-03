@@ -18,24 +18,32 @@ export default function AddParticipantModal({
   const currentUserId = localStorage.getItem("userId");
   const token = localStorage.getItem("token");
 
-  // Fetch all users
+  // Debug: Log props when modal opens
   useEffect(() => {
     if (isOpen) {
+      console.log("🔓 AddParticipantModal OPENED");
+      console.log("   Current User:", currentUserId);
+      console.log("   Call With:", currentCallUsername, currentCallUserId);
+      console.log("   Token:", token ? "✅ Exists" : "❌ Missing");
       fetchUsers();
     }
   }, [isOpen]);
 
   // Listen for online users
   useEffect(() => {
-    socket.on("online-users", (usersList) => {
+    const handleOnlineUsers = (usersList) => {
+      console.log("👥 Online users updated:", usersList);
       setOnlineUsers(usersList);
-    });
+    };
+
+    socket.on("online-users", handleOnlineUsers);
 
     // Request current online users
+    console.log("📤 Requesting online users...");
     socket.emit("get-online-users");
 
     return () => {
-      socket.off("online-users");
+      socket.off("online-users", handleOnlineUsers);
     };
   }, []);
 
@@ -47,6 +55,7 @@ export default function AddParticipantModal({
       const filtered = users.filter(user =>
         user.username.toLowerCase().includes(searchQuery.toLowerCase())
       );
+      console.log(`🔍 Search "${searchQuery}": ${filtered.length} results`);
       setFilteredUsers(filtered);
     }
   }, [searchQuery, users]);
@@ -54,49 +63,71 @@ export default function AddParticipantModal({
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      console.log("📥 Fetching users from API...");
+      
       const res = await api.get("/auth/users", {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
+      console.log("✅ API Response:", res.data);
+      console.log("   Total users:", res.data.length);
       
       // Filter out current user and user already in call
       const filtered = res.data.filter(
         user => user._id !== currentUserId && user._id !== currentCallUserId
       );
       
+      console.log("   After filtering:", filtered.length);
+      console.log("   Excluded:", currentUserId, currentCallUserId);
+      
       setUsers(filtered);
       setFilteredUsers(filtered);
     } catch (err) {
-      console.error("Failed to fetch users:", err);
-      alert("Failed to load users");
+      console.error("❌ Failed to fetch users:", err);
+      console.error("   Status:", err.response?.status);
+      console.error("   Message:", err.response?.data?.message);
+      alert("Failed to load users: " + (err.response?.data?.message || err.message));
     } finally {
       setLoading(false);
     }
   };
 
   const isUserOnline = (userId) => {
-    return onlineUsers.includes(userId);
+    const online = onlineUsers.includes(userId);
+    // console.log(`   User ${userId} online?`, online);
+    return online;
   };
 
   const inviteToCall = (user) => {
+    console.log("📲 INVITE BUTTON CLICKED");
+    console.log("   Target user:", user.username, user._id);
+    console.log("   Is online?", isUserOnline(user._id));
+    
     if (!isUserOnline(user._id)) {
+      console.log("❌ User is offline");
       alert(`${user.username} is offline`);
       return;
     }
 
     setInvitingUser(user._id);
 
-    // Emit invite-to-call event
-    socket.emit("invite-to-call", {
+    const inviteData = {
       toUserId: user._id,
       fromUserId: currentUserId,
       fromUsername: localStorage.getItem("username") || "Someone",
       existingCallUserId: currentCallUserId,
       existingCallUsername: currentCallUsername
-    });
+    };
+
+    console.log("📤 Emitting invite-to-call:", inviteData);
+    
+    // Emit invite-to-call event
+    socket.emit("invite-to-call", inviteData);
 
     // Show feedback
     setTimeout(() => {
       setInvitingUser(null);
+      console.log("✅ Invitation sent to", user.username);
       alert(`Invitation sent to ${user.username}`);
     }, 1000);
   };
@@ -112,6 +143,10 @@ export default function AddParticipantModal({
   };
 
   if (!isOpen) return null;
+
+  console.log("🎨 Rendering modal...");
+  console.log("   Users to show:", filteredUsers.length);
+  console.log("   Loading?", loading);
 
   return (
     <>
