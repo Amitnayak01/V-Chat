@@ -18,6 +18,7 @@ export const CallProvider = ({ children }) => {
     if (!currentUserId) return;
 
     if (socket.connected) {
+      console.log("🟢 Registering user online:", currentUserId);
       socket.emit("user-online", currentUserId);
     }
 
@@ -34,18 +35,27 @@ export const CallProvider = ({ children }) => {
   /* 🚨 ATTACH CALL LISTENER ONCE */
   useEffect(() => {
     const handleIncomingCall = ({ fromUserId, fromUsername, offer }) => {
-      console.log("📞 CALL RECEIVED:", fromUsername);
+      console.log("📞 INCOMING CALL RECEIVED from:", fromUsername, fromUserId);
       setIncomingCall({ fromUserId, fromUsername, offer });
     };
 
     const handleCallInvitation = ({ fromUserId, fromUsername, existingCallUserId, existingCallUsername }) => {
-      console.log("📲 CALL INVITATION RECEIVED from:", fromUsername);
-      setCallInvitation({ fromUserId, fromUsername, existingCallUserId, existingCallUsername });
+      console.log("📲 CALL INVITATION RECEIVED");
+      console.log("   From:", fromUsername, fromUserId);
+      console.log("   Join call with:", existingCallUsername, existingCallUserId);
+      
+      setCallInvitation({ 
+        fromUserId, 
+        fromUsername, 
+        existingCallUserId, 
+        existingCallUsername 
+      });
     };
 
     const handleCallEnded = () => {
-      console.log("📴 Call ended → clearing incomingCall state");
+      console.log("📴 Call ended → clearing state");
       setIncomingCall(null);
+      setCallInvitation(null);
     };
 
     socket.on("incoming-call", handleIncomingCall);
@@ -60,15 +70,15 @@ export const CallProvider = ({ children }) => {
   }, []);
 
   const acceptCall = () => {
-    if (!incomingCall) return;
+    if (!incomingCall) {
+      console.log("❌ No incoming call to accept");
+      return;
+    }
     
-    console.log("✅ Accepting call from:", incomingCall.fromUsername);
+    console.log("✅ Accepting regular call from:", incomingCall.fromUsername);
     
     // Navigate to call page with incoming call data
     navigate(`/call?userId=${incomingCall.fromUserId}&username=${incomingCall.fromUsername}&incoming=true`);
-    
-    // Don't clear incomingCall immediately - let VideoCall component access it
-    // It will be cleared by VideoCall after processing
   };
 
   const declineCall = () => {
@@ -85,20 +95,31 @@ export const CallProvider = ({ children }) => {
   };
 
   const acceptInvitation = () => {
-    if (!callInvitation) return;
+    if (!callInvitation) {
+      console.log("❌ No invitation to accept");
+      return;
+    }
 
-    console.log("✅ Accepting invitation to join call");
+    console.log("✅ ACCEPTING INVITATION TO JOIN CALL");
+    console.log("   Will join call with:", callInvitation.existingCallUsername);
+    console.log("   User ID:", callInvitation.existingCallUserId);
 
-    // Navigate to call with the existing call user
-    navigate(`/call?userId=${callInvitation.existingCallUserId}&username=${callInvitation.existingCallUsername}&incoming=true`);
+    // Navigate to call with the user who is already in the call
+    const url = `/call?userId=${callInvitation.existingCallUserId}&username=${callInvitation.existingCallUsername}&incoming=false`;
+    console.log("🔄 Navigating to:", url);
     
-    setCallInvitation(null);
+    navigate(url);
+    
+    // Clear invitation after navigation
+    setTimeout(() => {
+      setCallInvitation(null);
+    }, 500);
   };
 
   const declineInvitation = () => {
     if (!callInvitation) return;
 
-    console.log("❌ Declining call invitation");
+    console.log("❌ Declining call invitation from:", callInvitation.fromUsername);
     setCallInvitation(null);
   };
 
@@ -134,9 +155,9 @@ export const CallProvider = ({ children }) => {
             <div style={iconContainerStyle}>
               <UserPlus size={50} color="#3b82f6" />
             </div>
-            <h2 style={titleStyle}>Call Invitation</h2>
+            <h2 style={titleStyle}>Join Call?</h2>
             <p style={textStyle}>
-              {callInvitation.fromUsername} invited you to join their call with {callInvitation.existingCallUsername}
+              <strong>{callInvitation.fromUsername}</strong> invited you to join their call with <strong>{callInvitation.existingCallUsername}</strong>
             </p>
             <div style={buttonContainerStyle}>
               <button onClick={acceptInvitation} style={acceptButtonStyle}>
@@ -171,7 +192,7 @@ const modalStyle = {
   color: "white",
   textAlign: "center",
   minWidth: "320px",
-  maxWidth: "400px",
+  maxWidth: "450px",
   border: "1px solid rgba(255, 255, 255, 0.1)",
   boxShadow: "0 20px 60px rgba(0, 0, 0, 0.5)",
 };
@@ -190,9 +211,9 @@ const titleStyle = {
 
 const textStyle = {
   fontSize: "16px",
-  color: "rgba(255, 255, 255, 0.7)",
+  color: "rgba(255, 255, 255, 0.8)",
   marginBottom: "30px",
-  lineHeight: "1.5",
+  lineHeight: "1.6",
 };
 
 const buttonContainerStyle = {
