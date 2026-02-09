@@ -47,10 +47,22 @@ router.post("/remove-profile", authMiddleware, async (req, res) => {
 });
 
 router.get("/me", authMiddleware, async (req, res) => {
-  const user = await User.findById(req.user.id)
-    .select("username profilePic");
-  res.json(user);
+  try {
+    const user = await User.findById(req.user.id)
+      .select("username profilePic bio");
+
+    // ❌ User missing (DB reset, deleted, etc.)
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error("Error in /me:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
+
 
 
 

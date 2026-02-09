@@ -15,9 +15,17 @@ export default function Home() {
   const token = localStorage.getItem("token");
 
   useEffect(() => {
+  if (!token) {
+    nav("/login");
+  }
+}, []);
+
+
+  useEffect(() => {
     let mounted = true;
 
-   const load = async () => {
+
+    const load = async () => {
   try {
     const res = await api.get("/auth/me", {
       headers: { Authorization: `Bearer ${token}` }
@@ -25,10 +33,9 @@ export default function Home() {
 
     if (!mounted) return;
 
-    // 🔴 SAFETY CHECK
+    // 🧨 USER DOES NOT EXIST ANYMORE
     if (!res.data || !res.data._id) {
-      console.log("⚠️ User not found in DB");
-      return;
+      throw new Error("User not found");
     }
 
     setCurrentUser(res.data);
@@ -42,9 +49,21 @@ export default function Home() {
 
     await fetchUsers();
   } catch (err) {
-    console.error("Failed to load user data:", err);
+    console.log("🚪 Session invalid → redirecting to signup");
+
+    // 🧹 CLEAR BROKEN LOGIN
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("userId");
+
+    // 🛑 stop loading
+    setLoading(false);
+
+    // 🚀 REDIRECT
+    nav("/signup");  // or "/login"
   }
 };
+
 
 
     load();
