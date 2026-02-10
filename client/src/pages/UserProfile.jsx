@@ -534,6 +534,18 @@ const startVideoCall = () => {
         </div>
       )}
 
+
+      {callState === "connected" && (
+  <button
+    onClick={addUserToCall}
+    className="control-btn"
+    title="Add participant"
+  >
+    <UserPlus size={isMobile ? 18 : 20} color="#fff" />
+  </button>
+)}
+
+
       <style>{`
         @keyframes fadeIn {
           from {
