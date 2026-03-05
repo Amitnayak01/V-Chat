@@ -552,10 +552,15 @@ export const AudioCallProvider = ({ children }) => {
     onAudioCallBusy:     () => { stopRinging(); fullCleanup(); },
 
     // WebRTC signaling (audio-specific events)
-    onAudioWebRTCOffer: async ({ offer, from }) => {
-      if (!activeCallRef.current) return;
-      await handleAudioOffer(from, offer);
-    },
+onAudioWebRTCOffer: async ({ offer, from }) => {
+  if (!activeCallRef.current) return;
+  await handleAudioOffer(from, offer);
+  // Receiver transitions to connected after processing offer + sending answer
+  setCallState('connected');
+  callStateRef.current = 'connected';
+  setCallStatus('');
+  startTimer();
+},
 
     onAudioWebRTCAnswer: async ({ answer, from }) => {
       if (!activeCallRef.current) return;
