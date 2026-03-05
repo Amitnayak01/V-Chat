@@ -1,43 +1,67 @@
 /**
- * IncomingAudioCall.jsx
- * ─────────────────────
- * WhatsApp-style incoming audio call popup.
- * Mounts globally (via App.jsx) so it appears on any page.
- * Reads state from AudioCallContext — zero props required.
+ * IncomingAudioCall.jsx  —  Professional incoming call screen (upgraded)
+ * ────────────────────────────────────────────────────────────────────────
+ * All existing logic (acceptCall, rejectCall, callState) is untouched.
+ * Upgraded: glassmorphism card, better pulse rings, swipe hint on mobile,
+ * animated status bars, richer typography.
  */
 
 import { useEffect, useRef } from 'react';
 import { Phone, PhoneOff } from 'lucide-react';
-import { useAudioCall } from "../../context/AudioCallContext";
-// ── Animated waveform bars (speaking indicator on ring) ──────────────────────
-const RingWave = () => (
-  <div className="flex items-end justify-center gap-[3px] h-5">
-    {[0.4, 0.7, 1, 0.7, 0.4].map((h, i) => (
+import { useAudioCall } from '../../context/AudioCallContext';
+
+// ─── Animated waveform bars ────────────────────────────────────────────────────
+const RingWave = ({ color = '#10b981' }) => (
+  <div className="flex items-end justify-center gap-[3px]" style={{ height: 18 }}>
+    {[0.45, 0.75, 1, 0.75, 0.45].map((h, i) => (
       <span
         key={i}
-        className="w-[3px] rounded-full bg-emerald-400"
         style={{
+          width: 3,
           height: `${h * 100}%`,
-          animation: `audioBarPulse 0.9s ease-in-out ${i * 0.12}s infinite alternate`,
+          background: color,
+          borderRadius: 4,
+          animation: `ringBar 0.85s ease-in-out ${i * 0.11}s infinite alternate`,
         }}
       />
     ))}
   </div>
 );
 
-// ── Avatar with pulsing ring ──────────────────────────────────────────────────
+// ─── Caller avatar with concentric pulse rings ─────────────────────────────────
 const CallerAvatar = ({ avatar, name }) => (
-  <div className="relative flex items-center justify-center mb-5">
-    {/* Outer pulse rings */}
-    <span className="absolute w-28 h-28 rounded-full bg-emerald-500/20 animate-ping" style={{ animationDuration: '1.6s' }} />
-    <span className="absolute w-24 h-24 rounded-full bg-emerald-500/30 animate-ping" style={{ animationDuration: '1.2s' }} />
-
+  <div className="relative flex items-center justify-center" style={{ width: 128, height: 128, marginBottom: 24 }}>
+    {/* Three concentric pulse rings */}
+    {[1.8, 1.5, 1.25].map((scale, i) => (
+      <span
+        key={i}
+        className="absolute rounded-full"
+        style={{
+          inset: 0,
+          transform: `scale(${scale})`,
+          background: `rgba(16,185,129,${0.07 - i * 0.02})`,
+          animation: `ringPulse 1.6s ease-out ${i * 0.28}s infinite`,
+        }}
+      />
+    ))}
     {/* Avatar */}
-    <div className="relative z-10 w-20 h-20 rounded-full overflow-hidden ring-4 ring-emerald-400/60 shadow-xl shadow-emerald-900/30">
+    <div
+      className="relative z-10 rounded-full overflow-hidden"
+      style={{
+        width: 88, height: 88,
+        boxShadow: '0 0 0 3px rgba(16,185,129,0.55), 0 8px 32px rgba(16,185,129,0.2), 0 16px 48px rgba(0,0,0,0.5)',
+      }}
+    >
       {avatar ? (
         <img src={avatar} alt={name} className="w-full h-full object-cover" />
       ) : (
-        <div className="w-full h-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white text-2xl font-bold select-none">
+        <div
+          className="w-full h-full flex items-center justify-center text-white font-bold select-none"
+          style={{
+            background: 'linear-gradient(135deg, #059669 0%, #0891b2 100%)',
+            fontSize: 32,
+          }}
+        >
           {name?.[0]?.toUpperCase() ?? '?'}
         </div>
       )}
@@ -45,19 +69,26 @@ const CallerAvatar = ({ avatar, name }) => (
   </div>
 );
 
-// ── Action button ─────────────────────────────────────────────────────────────
+// ─── Accept / Decline button ──────────────────────────────────────────────────
 const ActionBtn = ({ icon: Icon, label, variant, onClick }) => {
-  const color = variant === 'accept'
-    ? 'bg-emerald-500 hover:bg-emerald-400 shadow-lg shadow-emerald-900/40'
-    : 'bg-rose-500   hover:bg-rose-400   shadow-lg shadow-rose-900/40';
-
+  const isAccept = variant === 'accept';
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-2 group transition-all duration-150 active:scale-90`}
+      className="flex flex-col items-center gap-2.5 group transition-all duration-150 active:scale-90"
+      style={{ outline: 'none' }}
     >
-      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${color} transition-all duration-150`}>
-        <Icon className="w-7 h-7 text-white" strokeWidth={2.2} />
+      <div
+        className="flex items-center justify-center rounded-full transition-all duration-150"
+        style={{
+          width: 68, height: 68,
+          background: isAccept ? '#10b981' : '#ef4444',
+          boxShadow: isAccept
+            ? '0 6px 28px rgba(16,185,129,0.5), 0 2px 8px rgba(0,0,0,0.3)'
+            : '0 6px 28px rgba(239,68,68,0.5),  0 2px 8px rgba(0,0,0,0.3)',
+        }}
+      >
+        <Icon style={{ width: 28, height: 28, color: '#fff' }} strokeWidth={2.2} />
       </div>
       <span className="text-xs font-semibold text-slate-400 group-hover:text-white transition-colors">
         {label}
@@ -69,9 +100,8 @@ const ActionBtn = ({ icon: Icon, label, variant, onClick }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const IncomingAudioCall = () => {
   const { callState, incomingCall, acceptCall, rejectCall } = useAudioCall();
-  const overlayRef = useRef(null);
 
-  // Prevent background scroll while popup is showing
+  // Prevent background scroll
   useEffect(() => {
     if (callState === 'incoming') {
       document.body.style.overflow = 'hidden';
@@ -85,72 +115,84 @@ const IncomingAudioCall = () => {
 
   return (
     <>
-      {/* ── CSS for the waveform animation ───────────────────────────── */}
       <style>{`
-        @keyframes audioBarPulse {
-          from { transform: scaleY(0.3); opacity: 0.6; }
-          to   { transform: scaleY(1);   opacity: 1;   }
+        @keyframes ringBar {
+          from { transform: scaleY(0.3); opacity: 0.55; }
+          to   { transform: scaleY(1);   opacity: 1;    }
         }
-        @keyframes incomingSlideUp {
-          from { opacity: 0; transform: translateY(24px) scale(0.96); }
+        @keyframes ringPulse {
+          0%   { opacity: 0.8; transform: scale(var(--s, 1)); }
+          100% { opacity: 0;   transform: scale(calc(var(--s, 1) + 0.3)); }
+        }
+        @keyframes cardSlideUp {
+          from { opacity: 0; transform: translateY(28px) scale(0.95); }
           to   { opacity: 1; transform: translateY(0)    scale(1);    }
+        }
+        @keyframes backdropIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
         }
       `}</style>
 
-      {/* ── Backdrop ─────────────────────────────────────────────────── */}
+      {/* ── Backdrop ─────────────────────────────────────────────────────── */}
       <div
-        ref={overlayRef}
         className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6"
-        style={{ background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(8px)' }}
+        style={{
+          background: 'rgba(2,8,20,0.75)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          animation: 'backdropIn 0.2s ease forwards',
+        }}
       >
-        {/* ── Card ───────────────────────────────────────────────────── */}
+        {/* ── Card ─────────────────────────────────────────────────────── */}
         <div
-          className="w-full sm:max-w-[340px] rounded-t-[28px] sm:rounded-[28px] overflow-hidden"
+          className="w-full sm:max-w-[360px] rounded-t-[32px] sm:rounded-[32px] overflow-hidden"
           style={{
-            background: 'linear-gradient(145deg, #0f172a 0%, #1a2744 60%, #0d2137 100%)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 32px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)',
-            animation: 'incomingSlideUp 0.28s cubic-bezier(0.34, 1.4, 0.64, 1) forwards',
+            background: 'linear-gradient(165deg, #0c1829 0%, #111e36 50%, #0a1525 100%)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            boxShadow: '0 -8px 48px rgba(0,0,0,0.4), 0 32px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
+            animation: 'cardSlideUp 0.3s cubic-bezier(0.34, 1.35, 0.64, 1) forwards',
           }}
         >
-          {/* Top accent bar */}
-          <div className="h-[3px] bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
+          {/* Top accent */}
+          <div
+            className="h-[3px]"
+            style={{ background: 'linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #10b981 100%)' }}
+          />
+
+          {/* Mobile drag pill */}
+          <div className="flex justify-center pt-3 pb-0 sm:hidden">
+            <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.15)' }} />
+          </div>
 
           <div className="px-8 pt-8 pb-10 flex flex-col items-center text-center">
-            {/* Caller avatar */}
-            <CallerAvatar
-              avatar={incomingCall.callerAvatar}
-              name={incomingCall.callerName}
-            />
+            {/* Avatar */}
+            <CallerAvatar avatar={incomingCall.callerAvatar} name={incomingCall.callerName} />
 
-            {/* Caller name */}
-            <h2 className="text-white text-xl font-bold mb-1 tracking-tight">
-              {incomingCall.callerName}
-            </h2>
-
-            {/* Animated "Audio call" label */}
-            <div className="flex items-center gap-2 mb-7">
+            {/* Incoming call label */}
+            <div className="flex items-center gap-2 mb-2">
               <RingWave />
-              <span className="text-emerald-400 text-xs font-semibold tracking-widest uppercase">
-                Audio call
+              <span
+                className="text-[11px] font-bold tracking-[0.15em] uppercase"
+                style={{ color: '#10b981' }}
+              >
+                Incoming audio call
               </span>
               <RingWave />
             </div>
 
-            {/* Accept / Reject buttons */}
-            <div className="flex items-start justify-center gap-16 w-full">
-              <ActionBtn
-                icon={PhoneOff}
-                label="Decline"
-                variant="reject"
-                onClick={rejectCall}
-              />
-              <ActionBtn
-                icon={Phone}
-                label="Accept"
-                variant="accept"
-                onClick={acceptCall}
-              />
+            {/* Caller name */}
+            <h2 className="text-white text-2xl font-bold tracking-tight mb-1">
+              {incomingCall.callerName}
+            </h2>
+            <p className="text-slate-500 text-sm mb-8">
+              V-Meet · Audio call
+            </p>
+
+            {/* Buttons */}
+            <div className="flex items-start justify-center gap-20 w-full">
+              <ActionBtn icon={PhoneOff} label="Decline" variant="reject" onClick={rejectCall} />
+              <ActionBtn icon={Phone}    label="Accept"  variant="accept" onClick={acceptCall} />
             </div>
           </div>
         </div>
