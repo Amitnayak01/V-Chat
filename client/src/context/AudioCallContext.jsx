@@ -184,6 +184,13 @@ export const AudioCallProvider = ({ children }) => {
       if (candidate) emit('audio-webrtc-ice', { candidate, to: userId, from: user?._id });
     };
     pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        // Both caller AND callee transition to 'connected' here
+        setCallState('connected');
+        callStateRef.current = 'connected';
+        setCallStatus('');
+        if (!callTimerRef.current) startTimer();   // guard: only start once
+      }
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') removeRemoteStream(userId);
     };
     pc.oniceconnectionstatechange = () => {
@@ -473,10 +480,8 @@ export const AudioCallProvider = ({ children }) => {
     onAudioWebRTCAnswer: async ({ answer, from }) => {
       if (!activeCallRef.current) return;
       await handleAudioAnswer(from, answer);
-      setCallState('connected');
-      callStateRef.current = 'connected';
-      setCallStatus('');
-      startTimer();
+      // NOTE: transition to 'connected' + startTimer is now handled by
+      // onconnectionstatechange in createAudioPeer — fires on BOTH sides.
     },
 
     onAudioWebRTCIce: async ({ candidate, from }) => {
