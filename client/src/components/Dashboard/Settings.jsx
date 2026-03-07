@@ -1,15 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Shield, Bell, Lock, Key, Eye, EyeOff, Loader2, AlertCircle,
-  Trash2, Download, Monitor, Activity, Sun, Moon, Volume2,
+  Bell, Eye, EyeOff, Monitor, Activity, Sun, Moon, Volume2,
   VolumeX, Wifi, BellRing, Smartphone, Mail, Calendar,
-  X, User, CheckCircle2, Settings as SettingsIcon,
+  User, CheckCircle2, Settings as SettingsIcon,
+  Music, Play, Square, RotateCcw, Video, MessageCircle,
+  Upload, FolderOpen, FileMusic,
 } from 'lucide-react';
 import { useAuth }     from '../../context/AuthContext';
 import { settingsAPI } from '../../utils/api';
 import toast           from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { SoundEngine, RINGTONE_OPTIONS, MESSAGE_TONE_OPTIONS,
+         getCustomRingtone, setCustomRingtone, fileToDataUrl } from '../../utils/SoundEngine';
+import { useSoundSettings } from '../../hooks/useSoundSettings';
 
 /* ─── DESIGN TOKENS ──────────────────────────────── */
 const C = {
@@ -38,6 +42,11 @@ const C = {
   purpleBg: '#F5F3FF',
   teal:     '#0369A1',
   tealBg:   '#E0F2FE',
+  emerald:    '#059669',
+  emeraldBg:  '#ECFDF5',
+  emeraldLn:  '#A7F3D0',
+  rose:       '#E11D48',
+  roseBg:     '#FFF1F2',
 };
 
 const SPR  = { type: 'spring', stiffness: 480, damping: 36 };
@@ -45,15 +54,12 @@ const EASE = { duration: 0.22, ease: [0.4, 0, 0.2, 1] };
 const UP   = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: EASE } };
 const STG  = { show: { transition: { staggerChildren: 0.055 } } };
 
-/* ─── NAV ────────────────────────────────────────── */
+/* ─── NAV — Security items removed ──────────────── */
 const NAV = [
-  { id: 'sec-password',    label: 'Password',     icon: Lock,     group: 'Security'    },
-  { id: 'sec-sessions',    label: 'Sessions',      icon: Activity, group: 'Security'    },
-  { id: 'sec-export',      label: 'Data Export',   icon: Download, group: 'Security'    },
-  { id: 'sec-danger',      label: 'Danger Zone',   icon: Trash2,   group: 'Security'    },
-  { id: 'pref-appearance', label: 'Appearance',    icon: Sun,      group: 'Preferences' },
-  { id: 'pref-notif',      label: 'Notifications', icon: Bell,     group: 'Preferences' },
-  { id: 'pref-av',         label: 'Audio & Video', icon: Volume2,  group: 'Preferences' },
+  { id: 'pref-appearance', label: 'Appearance',    icon: Sun,    group: 'Preferences' },
+  { id: 'pref-notif',      label: 'Notifications', icon: Bell,   group: 'Preferences' },
+  { id: 'pref-sound',      label: 'Sound & Tones', icon: Music,  group: 'Preferences' },
+  { id: 'pref-av',         label: 'Audio & Video', icon: Volume2,group: 'Preferences' },
 ];
 
 /* ─── HOOKS ──────────────────────────────────────── */
@@ -148,7 +154,7 @@ const TR = ({ label, description, value, onChange, icon: Icon }) => (
 );
 
 /* ─── CARD ───────────────────────────────────────── */
-const Card = ({ id, children, danger = false }) => (
+const Card = ({ id, children }) => (
   <motion.section
     id={id}
     variants={UP}
@@ -156,10 +162,8 @@ const Card = ({ id, children, danger = false }) => (
       background: C.surface,
       borderRadius: 16,
       overflow: 'hidden',
-      border: `1px solid ${danger ? C.redLine : C.border}`,
-      boxShadow: danger
-        ? '0 1px 3px rgba(220,38,38,.07), 0 4px 16px rgba(220,38,38,.04)'
-        : '0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04)',
+      border: `1px solid ${C.border}`,
+      boxShadow: '0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04)',
       scrollMarginTop: 32,
     }}
   >
@@ -187,271 +191,374 @@ const CH = ({ icon: Icon, title, subtitle, iColor, iBg }) => (
   </div>
 );
 
-/* ─── SECTION LABEL ──────────────────────────────── */
-const SectionLabel = ({ label }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '36px 0 16px' }}>
-    <span style={{
-      fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase',
-      letterSpacing: '.1em', whiteSpace: 'nowrap',
-    }}>{label}</span>
-    <div style={{ flex: 1, height: 1, background: C.border }} />
-  </div>
+/* ══════════════════════════════════════════════════════
+   SOUND SETTINGS SECTION
+══════════════════════════════════════════════════════ */
+
+const SOUND_TABS = [
+  { id: 'audio',   label: 'Audio Call', Icon: Bell,          accent: '#059669', accentL: '#ECFDF5', accentBd: '#A7F3D0' },
+  { id: 'video',   label: 'Video Call', Icon: Video,         accent: '#2563EB', accentL: '#EFF6FF', accentBd: '#BFDBFE' },
+  { id: 'message', label: 'Messages',   Icon: MessageCircle, accent: '#7C3AED', accentL: '#F5F3FF', accentBd: '#DDD6FE' },
+];
+
+const SmallToggle = ({ checked, onChange }) => (
+  <button
+    role="switch" aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    style={{
+      position: 'relative', flexShrink: 0, width: 44, height: 24,
+      borderRadius: 99, border: 'none', cursor: 'pointer',
+      background: checked ? C.accent : '#D1D5DB',
+      outline: 'none', transition: 'background .22s',
+      boxShadow: checked ? `0 0 0 3px ${C.accentLH}` : 'none',
+    }}
+  >
+    <motion.span animate={{ x: checked ? 22 : 3 }} transition={SPR}
+      style={{ position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,.20)' }}
+    />
+  </button>
 );
 
-/* ─── PASSWORD FIELD ─────────────────────────────── */
-const PF = ({ label, value, onChange, show, onToggle, error, placeholder, fRef }) => (
-  <div>
-    <label style={{
-      display: 'block', fontSize: 11, fontWeight: 600, color: C.muted,
-      textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 7,
-    }}>{label}</label>
-    <div style={{ position: 'relative' }}>
-      <input
-        ref={fRef}
-        type={show ? 'text' : 'password'}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        style={{
-          width: '100%', height: 44, padding: '0 44px 0 14px', borderRadius: 10,
-          border: `1.5px solid ${error ? C.red : C.border}`,
-          background: error ? C.redBg : C.surfaceEl,
-          fontSize: 14, color: C.ink, outline: 'none', fontFamily: 'inherit',
-          transition: 'all .18s', boxSizing: 'border-box',
-        }}
-        onFocus={e => {
-          e.target.style.background = '#fff';
-          e.target.style.borderColor = error ? C.red : C.accent;
-          e.target.style.boxShadow = error ? '0 0 0 3px rgba(220,38,38,.1)' : '0 0 0 3px rgba(37,99,235,.12)';
-        }}
-        onBlur={e => {
-          e.target.style.background = error ? C.redBg : C.surfaceEl;
-          e.target.style.borderColor = error ? C.red : C.border;
-          e.target.style.boxShadow = 'none';
-        }}
-      />
-      <button
-        type="button"
-        onClick={onToggle}
-        style={{
-          position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-          background: 'none', border: 'none', cursor: 'pointer', color: C.dim, padding: 4,
-          borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >
-        {show ? <EyeOff style={{ width: 15, height: 15 }} /> : <Eye style={{ width: 15, height: 15 }} />}
-      </button>
-    </div>
-    <AnimatePresence>
-      {error && (
-        <motion.p
-          initial={{ opacity: 0, y: -4, height: 0 }}
-          animate={{ opacity: 1, y: 0, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: C.red, marginTop: 6 }}
-        >
-          <AlertCircle style={{ width: 12, height: 12, flexShrink: 0 }} />{error}
-        </motion.p>
-      )}
-    </AnimatePresence>
-  </div>
-);
-
-/* ─── CHANGE PASSWORD MODAL ──────────────────────── */
-const PasswordModal = ({ onClose }) => {
-  const [form,   setForm]   = useState({ current: '', newPass: '', confirm: '' });
-  const [show,   setShow]   = useState({ current: false, newPass: false, confirm: false });
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState({});
-  const fRef = useRef(null);
-
-  useEffect(() => { fRef.current?.focus(); }, []);
-  useEffect(() => {
-    const h = e => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
-  const validate = () => {
-    const e = {};
-    if (!form.current)                e.current = 'Current password is required';
-    if (form.newPass.length < 8)      e.newPass = 'Must be at least 8 characters';
-    if (form.newPass !== form.confirm) e.confirm = 'Passwords do not match';
-    return e;
-  };
-
-  const handleSubmit = async () => {
-    const e = validate();
-    if (Object.keys(e).length) { setErrors(e); return; }
-    setSaving(true);
-    try {
-      await settingsAPI.changePassword({ currentPassword: form.current, newPassword: form.newPass });
-      toast.success('Password changed successfully!');
-      onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to change password');
-    } finally { setSaving(false); }
-  };
-
-  const score = [
-    form.newPass.length >= 8,
-    /[A-Z]/.test(form.newPass),
-    /[0-9]/.test(form.newPass),
-    /[^A-Za-z0-9]/.test(form.newPass),
-  ].filter(Boolean).length;
-
-  const SM = [null,
-    { label: 'Weak',   color: '#EF4444' },
-    { label: 'Fair',   color: '#F97316' },
-    { label: 'Good',   color: '#3B82F6' },
-    { label: 'Strong', color: '#22C55E' },
-  ][score];
-
+const VolumeSlider = ({ value, onChange, accent }) => {
+  const pct = Math.round(value * 100);
   return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      transition={{ duration: .2 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <VolumeX style={{ width: 14, height: 14, color: C.dim, flexShrink: 0 }} />
+      <div style={{ flex: 1, position: 'relative', height: 20, display: 'flex', alignItems: 'center' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 2, background: C.border }} />
+        <div style={{ position: 'absolute', left: 0, width: `${pct}%`, height: 4, borderRadius: 2, background: accent, transition: 'width .1s' }} />
+        <input type="range" min={0} max={1} step={0.05} value={value}
+          onChange={e => onChange(parseFloat(e.target.value))}
+          style={{ position: 'relative', width: '100%', appearance: 'none', WebkitAppearance: 'none',
+            background: 'transparent', cursor: 'pointer', outline: 'none', margin: 0 }}
+        />
+      </div>
+      <Volume2 style={{ width: 14, height: 14, color: C.muted, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, width: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
+    </div>
+  );
+};
+
+const RingRow = ({ option, selected, previewing, onSelect, onPreview, onStop, accent, accentL }) => (
+  <div
+    onClick={() => onSelect(option.id)}
+    style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '11px 14px', borderRadius: 10, cursor: 'pointer',
+      background: selected ? accentL : C.surfaceEl,
+      border: `1.5px solid ${selected ? accent : C.border}`,
+      marginBottom: 6, transition: 'all .15s',
+    }}
+    onMouseEnter={e => { if (!selected) { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = '#CBD5E1'; } }}
+    onMouseLeave={e => { if (!selected) { e.currentTarget.style.background = C.surfaceEl; e.currentTarget.style.borderColor = C.border; } }}
+  >
+    <div style={{
+      width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+      background: selected ? accent : 'transparent',
+      border: `2px solid ${selected ? accent : C.dim}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
+    }}>
+      {selected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+    </div>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <p style={{ fontSize: 13, fontWeight: selected ? 600 : 500, color: selected ? C.ink : C.inkSub, margin: 0 }}>{option.label}</p>
+      <p style={{ fontSize: 11, color: C.dim, margin: '2px 0 0' }}>{option.desc}</p>
+    </div>
+    <button
+      onClick={e => { e.stopPropagation(); previewing ? onStop() : onPreview(option.id); }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 200, display: 'flex',
-        alignItems: 'flex-end', justifyContent: 'center',
-        background: 'rgba(10,14,22,.55)', backdropFilter: 'blur(6px)',
+        width: 30, height: 30, borderRadius: '50%', border: `1px solid ${C.border}`,
+        background: previewing ? '#FFF1F2' : C.surface,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
       }}
     >
-      <motion.div
-        initial={{ opacity: 0, y: 60 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 60 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 34 }}
-        role="dialog" aria-modal="true" aria-labelledby="m-title"
-        className="pw-modal"
+      {previewing
+        ? <Square style={{ width: 10, height: 10, color: C.rose }} />
+        : <Play   style={{ width: 10, height: 10, color: C.muted }} />}
+    </button>
+  </div>
+);
+
+const FromDeviceRow = ({ tabId, onCustomSet }) => {
+  const typeMap = { audio: 'ring', video: 'video', message: 'message' };
+  const type    = typeMap[tabId] ?? 'ring';
+
+  const [custom,    setCustom]    = useState(() => getCustomRingtone(type));
+  const [dragging,  setDragging]  = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [previewing,setPreviewing]= useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { setCustom(getCustomRingtone(type)); }, [type]);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('audio/')) { alert('Please select an audio file (mp3, wav, ogg, m4a, etc.)'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('File too large — max 10 MB'); return; }
+    setUploading(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setCustomRingtone(type, dataUrl);
+      setCustom(dataUrl);
+      onCustomSet(true);
+    } catch (e) { alert('Could not read file'); }
+    finally { setUploading(false); }
+  };
+
+  const handleDrop = (e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files?.[0]); };
+
+  const handleRemove = () => {
+    SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone();
+    setCustomRingtone(type, null);
+    setCustom(null); setPreviewing(false); onCustomSet(false);
+  };
+
+  const handlePreview = () => {
+    if (previewing) {
+      SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone(); setPreviewing(false);
+    } else {
+      setPreviewing(true);
+      if (tabId === 'video') {
+        SoundEngine.playVideoCallTone('chime', 0.8);
+        setTimeout(() => { SoundEngine.stopVideoCallTone(); setPreviewing(false); }, 3000);
+      } else if (tabId === 'message') {
+        SoundEngine.playMessageTone('ding', 0.6);
+        setTimeout(() => setPreviewing(false), 1000);
+      } else {
+        SoundEngine.playRingtone('classic', 0.8);
+        setTimeout(() => { SoundEngine.stopRingtone(); setPreviewing(false); }, 3000);
+      }
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
         style={{
-          width: '100%', maxWidth: 480, background: C.surface,
-          borderRadius: '22px 22px 0 0',
-          boxShadow: '0 -12px 60px rgba(0,0,0,.22)',
-          overflow: 'hidden', fontFamily: "'DM Sans', system-ui, sans-serif",
-          maxHeight: '92vh', overflowY: 'auto',
+          border: `2px dashed ${dragging ? '#2563EB' : custom ? '#059669' : C.border}`,
+          borderRadius: 12, padding: '16px 14px',
+          background: dragging ? '#EFF6FF' : custom ? C.greenBg : C.surfaceEl,
+          transition: 'all .18s', cursor: 'default',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '14px 0 0' }}>
-          <div style={{ width: 40, height: 4, borderRadius: 99, background: C.border }} />
-        </div>
-
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 22px 14px', borderBottom: `1px solid ${C.borderSub}`,
-        }}>
+        {custom ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
-              width: 38, height: 38, borderRadius: 10, background: C.accentL,
+              width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+              background: C.greenBg, border: `1px solid ${C.greenLn}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Key style={{ width: 16, height: 16, color: C.accent }} />
+              <FileMusic style={{ width: 18, height: 18, color: C.emerald }} />
             </div>
-            <div>
-              <h3 id="m-title" style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, margin: 0, letterSpacing: '-.02em' }}>
-                Change Password
-              </h3>
-              <p style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>Update your account credentials</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: 0 }}>Custom ringtone active</p>
+              <p style={{ fontSize: 11, color: C.emerald, margin: '2px 0 0' }}>✓ This tone will play instead of built-in ringtones</p>
+            </div>
+            <button onClick={handlePreview} title={previewing ? 'Stop' : 'Preview'}
+              style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${C.border}`,
+                background: previewing ? '#FFF1F2' : C.surface, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              {previewing ? <Square style={{ width: 10, height: 10, color: C.rose }} /> : <Play style={{ width: 10, height: 10, color: C.muted }} />}
+            </button>
+            <button onClick={() => inputRef.current?.click()} title="Change file"
+              style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${C.border}`,
+                background: C.surface, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Upload style={{ width: 12, height: 12, color: C.muted }} />
+            </button>
+            <button onClick={handleRemove} title="Remove custom ringtone"
+              style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${C.redLine}`,
+                background: C.redBg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Square style={{ width: 12, height: 12, color: C.red }} />
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: dragging ? C.accentL : C.border,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s',
+            }}>
+              {uploading
+                ? <div style={{ width: 18, height: 18, border: `2px solid ${C.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                : <FolderOpen style={{ width: 20, height: 20, color: dragging ? C.accent : C.muted }} />}
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: C.inkSub, margin: 0 }}>
+                {uploading ? 'Loading…' : dragging ? 'Drop to upload' : 'Choose from device'}
+              </p>
+              <p style={{ fontSize: 11, color: C.dim, margin: '3px 0 0' }}>
+                Drag & drop, or{' '}
+                <span onClick={() => inputRef.current?.click()}
+                  style={{ color: C.accent, cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
+                  browse files
+                </span>
+                {' '}· MP3, WAV, OGG, M4A · Max 10 MB
+              </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              width: 34, height: 34, borderRadius: 9, border: 'none',
-              background: C.surfaceEl, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: C.muted, transition: 'background .15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = C.border; }}
-            onMouseLeave={e => { e.currentTarget.style.background = C.surfaceEl; }}
-          >
-            <X style={{ width: 15, height: 15 }} />
-          </button>
-        </div>
+        )}
+      </div>
+      <input ref={inputRef} type="file" accept="audio/*" style={{ display: 'none' }}
+        onChange={e => handleFile(e.target.files?.[0])} />
+    </div>
+  );
+};
 
-        <div style={{ padding: '22px 22px 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Current */}
-          <PF
-            label="Current Password" value={form.current} fRef={fRef}
-            onChange={e => { setForm(f => ({ ...f, current: e.target.value })); setErrors(er => ({ ...er, current: '' })); }}
-            show={show.current} onToggle={() => setShow(s => ({ ...s, current: !s.current }))}
-            error={errors.current} placeholder="Enter current password"
-          />
-          {/* New */}
+const RingPanel = ({ tabId, ringOptions, selectedId, onSelect, volume, onVolume, vibration, onVibration, accent, accentL }) => {
+  const [previewing, setPreviewing] = useState(null);
+  const [hasCustom,  setHasCustom]  = useState(() => {
+    const typeMap = { audio: 'ring', video: 'video', message: 'message' };
+    return !!getCustomRingtone(typeMap[tabId] ?? 'ring');
+  });
+  const isMsg = tabId === 'message';
+
+  const handlePreview = (id) => {
+    if (id === 'silent') return;
+    setPreviewing(id);
+    if (isMsg) {
+      SoundEngine.playMessageTone(id, volume);
+      setTimeout(() => setPreviewing(null), 900);
+    } else {
+      const type = tabId === 'video' ? 'video' : 'ring';
+      SoundEngine.previewRingtone(id, volume, type);
+      setTimeout(() => setPreviewing(null), 3100);
+    }
+  };
+
+  const handleStop = () => {
+    SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone(); setPreviewing(null);
+  };
+
+  useEffect(() => { handleStop(); }, [tabId]); // eslint-disable-line
+
+  return (
+    <div style={{ padding: '4px 0' }}>
+      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>
+        From Device
+      </p>
+      <FromDeviceRow tabId={tabId} onCustomSet={setHasCustom} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 14px' }}>
+        <div style={{ flex: 1, height: 1, background: C.border }} />
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', whiteSpace: 'nowrap' }}>
+          Built-in Ringtones
+        </span>
+        <div style={{ flex: 1, height: 1, background: C.border }} />
+      </div>
+
+      <div style={{ opacity: hasCustom ? 0.45 : 1, transition: 'opacity .2s', pointerEvents: hasCustom ? 'none' : 'auto' }}>
+        {hasCustom && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px',
+            background: C.amberBg, border: `1px solid #FDE68A`, borderRadius: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 13 }}>ℹ️</span>
+            <p style={{ fontSize: 11.5, color: C.amber, margin: 0 }}>Custom file overrides built-in ringtones</p>
+          </div>
+        )}
+        {ringOptions.map(opt => (
+          <RingRow key={opt.id} option={opt} selected={selectedId === opt.id} previewing={previewing === opt.id}
+            onSelect={onSelect} onPreview={handlePreview} onStop={handleStop} accent={accent} accentL={accentL} />
+        ))}
+      </div>
+
+      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', margin: '18px 0 10px' }}>Volume</p>
+      <div style={{ padding: '14px 16px', background: C.surfaceEl, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+        <VolumeSlider value={volume} onChange={onVolume} accent={accent} />
+      </div>
+
+      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', margin: '18px 0 10px' }}>Vibration</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', background: C.surfaceEl, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Smartphone style={{ width: 15, height: 15, color: C.muted }} />
           <div>
-            <PF
-              label="New Password" value={form.newPass}
-              onChange={e => { setForm(f => ({ ...f, newPass: e.target.value })); setErrors(er => ({ ...er, newPass: '' })); }}
-              show={show.newPass} onToggle={() => setShow(s => ({ ...s, newPass: !s.newPass }))}
-              error={errors.newPass} placeholder="Minimum 8 characters"
-            />
-            <AnimatePresence>
-              {form.newPass && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }} style={{ marginTop: 10 }}
-                >
-                  <div style={{ display: 'flex', gap: 5, marginBottom: 5 }}>
-                    {[1, 2, 3, 4].map(i => (
-                      <div key={i} style={{ height: 3, flex: 1, borderRadius: 99, background: C.border, overflow: 'hidden' }}>
-                        <motion.div
-                          initial={{ scaleX: 0 }} animate={{ scaleX: i <= score ? 1 : 0 }}
-                          transition={{ duration: .25, delay: i * .04 }}
-                          style={{ height: '100%', transformOrigin: 'left', background: SM?.color || C.border }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  {SM && <p style={{ fontSize: 11, fontWeight: 600, color: SM.color }}>{SM.label} password</p>}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <p style={{ fontSize: 13, fontWeight: 500, color: C.inkSub, margin: 0 }}>
+              {isMsg ? 'Vibrate on Message' : 'Vibrate on Ring'}
+            </p>
+            <p style={{ fontSize: 11, color: C.dim, margin: '2px 0 0' }}>Haptic feedback (mobile)</p>
           </div>
-          {/* Confirm */}
-          <PF
-            label="Confirm Password" value={form.confirm}
-            onChange={e => { setForm(f => ({ ...f, confirm: e.target.value })); setErrors(er => ({ ...er, confirm: '' })); }}
-            show={show.confirm} onToggle={() => setShow(s => ({ ...s, confirm: !s.confirm }))}
-            error={errors.confirm} placeholder="Re-enter new password"
-          />
         </div>
+        <SmallToggle checked={vibration} onChange={onVibration} />
+      </div>
+    </div>
+  );
+};
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '22px 22px 36px' }}>
-          <button
-            onClick={handleSubmit} disabled={saving}
+const SoundSettingsCard = () => {
+  const { settings, update, reset } = useSoundSettings();
+  const [activeTab, setActiveTab]   = useState('audio');
+
+  useEffect(() => () => { SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone(); }, []);
+
+  const tabMeta  = SOUND_TABS.find(t => t.id === activeTab);
+  const isVideo  = activeTab === 'video';
+  const isMsg    = activeTab === 'message';
+  const cat      = isMsg ? settings.messages : isVideo ? settings.videoCall : settings.audioCall;
+  const catKey   = isMsg ? 'messages' : isVideo ? 'videoCall' : 'audioCall';
+  const ringOpts = isMsg ? MESSAGE_TONE_OPTIONS : RINGTONE_OPTIONS;
+  const selId    = isMsg ? cat.tone : cat.ringtone;
+  const selKey   = isMsg ? 'tone' : 'ringtone';
+
+  return (
+    <Card id="pref-sound">
+      <CH icon={Music} title="Sound & Ringtones" subtitle="Customize tones and vibration for calls and messages" iColor={C.emerald} iBg={C.emeraldBg} />
+
+      <div style={{ display: 'flex', gap: 0, padding: '0 22px', borderBottom: `1px solid ${C.borderSub}`, background: C.surfaceEl }}>
+        {SOUND_TABS.map(tab => {
+          const on = activeTab === tab.id;
+          return (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '11px 16px',
+                border: 'none', background: 'transparent', cursor: 'pointer',
+                fontSize: 12.5, fontWeight: on ? 700 : 500, fontFamily: 'inherit',
+                color: on ? tab.accent : C.muted,
+                borderBottom: `2px solid ${on ? tab.accent : 'transparent'}`,
+                marginBottom: -1, transition: 'all .15s', whiteSpace: 'nowrap',
+              }}>
+              <tab.Icon style={{ width: 13, height: 13 }} />
+              {tab.label}
+            </button>
+          );
+        })}
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingRight: 4 }}>
+          <button onClick={reset} title="Reset all sound settings to defaults"
             style={{
-              width: '100%', height: 48, borderRadius: 12,
-              background: saving ? C.accentH : C.accent,
-              color: '#fff', fontSize: 15, fontWeight: 600, border: 'none',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-              fontFamily: 'inherit', transition: 'all .18s',
-              boxShadow: '0 2px 12px rgba(37,99,235,.35)',
+              display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px',
+              borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface,
+              fontSize: 11, fontWeight: 500, color: C.dim, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
             }}
-            onMouseEnter={e => { if (!saving) { e.currentTarget.style.background = C.accentH; e.currentTarget.style.boxShadow = '0 4px 18px rgba(37,99,235,.45)'; } }}
-            onMouseLeave={e => { if (!saving) { e.currentTarget.style.background = C.accent; e.currentTarget.style.boxShadow = '0 2px 12px rgba(37,99,235,.35)'; } }}
-          >
-            {saving ? <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} /> : <Lock style={{ width: 16, height: 16 }} />}
-            {saving ? 'Saving…' : 'Update Password'}
-          </button>
-          <button
-            onClick={onClose} disabled={saving}
-            style={{
-              width: '100%', height: 44, borderRadius: 12, background: C.surfaceEl,
-              color: C.muted, fontSize: 14, fontWeight: 500,
-              border: `1.5px solid ${C.border}`, cursor: 'pointer',
-              fontFamily: 'inherit', transition: 'background .15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = C.border}
-            onMouseLeave={e => e.currentTarget.style.background = C.surfaceEl}
-          >
-            Cancel
+            onMouseEnter={e => { e.currentTarget.style.background = C.surfaceEl; e.currentTarget.style.color = C.muted; }}
+            onMouseLeave={e => { e.currentTarget.style.background = C.surface;   e.currentTarget.style.color = C.dim; }}>
+            <RotateCcw style={{ width: 11, height: 11 }} /> Reset
           </button>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+
+      <div className="card-body" style={{ padding: '20px 22px 26px' }}>
+        <AnimatePresence mode="wait">
+          <motion.div key={activeTab}
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: .18 }}>
+            <RingPanel
+              tabId={activeTab} ringOptions={ringOpts} selectedId={selId}
+              onSelect={id => update(catKey, { [selKey]: id })}
+              volume={cat.volume} onVolume={v => update(catKey, { volume: v })}
+              vibration={cat.vibration} onVibration={v => update(catKey, { vibration: v })}
+              accent={tabMeta.accent} accentL={tabMeta.accentL}
+            />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <div style={{ padding: '10px 22px', borderTop: `1px solid ${C.borderSub}`, display: 'flex', alignItems: 'center', gap: 7 }}>
+        <CheckCircle2 style={{ width: 13, height: 13, color: C.emerald, flexShrink: 0 }} />
+        <p style={{ fontSize: 11.5, color: C.dim }}>Settings saved automatically and apply to all calls immediately.</p>
+      </div>
+    </Card>
   );
 };
 
@@ -459,17 +566,10 @@ const PasswordModal = ({ onClose }) => {
    MAIN SETTINGS COMPONENT
 ══════════════════════════════════════════════════════ */
 export default function Settings() {
-  const { logout }  = useAuth();
-  const navigate    = useNavigate();
   const active      = useActiveSection();
   const winW        = useWindowWidth();
   const isMobile    = winW < 768;
   const mobileNavRef = useRef(null);
-
-  const [showDelConfirm, setShowDelConfirm] = useState(false);
-  const [delPass,        setDelPass]        = useState('');
-  const [deleting,       setDeleting]       = useState(false);
-  const [showPwModal,    setShowPwModal]    = useState(false);
 
   const [notif, setNotif] = useState({
     incomingCalls: true, chatMessages: true, userOnline: false,
@@ -486,33 +586,8 @@ export default function Settings() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }, [active, isMobile]);
 
-  const handleDeleteAccount = async () => {
-    if (!delPass) { toast.error('Please enter your password'); return; }
-    setDeleting(true);
-    try {
-      await settingsAPI.deleteAccount(delPass);
-      toast.success('Account deleted successfully');
-      logout(); navigate('/login');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete account');
-    } finally { setDeleting(false); }
-  };
-
-  const handleExportData = async () => {
-    try {
-      const res  = await settingsAPI.exportData();
-      const url  = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href  = url;
-      link.setAttribute('download', `vmeet-data-${Date.now()}.json`);
-      document.body.appendChild(link); link.click(); link.remove();
-      toast.success('Data exported successfully');
-    } catch { toast.error('Failed to export data'); }
-  };
-
   const un = (k, v) => setNotif(p => ({ ...p, [k]: v }));
   const ua = (k, v) => setAv(p => ({ ...p, [k]: v }));
-  const groups = [...new Set(NAV.map(n => n.group))];
 
   const THEMES = [
     { id: 'light',  label: 'Light',  icon: Sun,     note: 'Always on' },
@@ -533,15 +608,8 @@ export default function Settings() {
         .nb-btn { transition: all .16s; }
         .nb-btn:hover { background: #EFF6FF !important; color: #2563EB !important; }
         .sb-btn:hover { background: #F0F2F5 !important; }
-        .db-btn:hover { background: #FEE2E2 !important; }
-        .ac-btn:hover { background: #1D4ED8 !important; box-shadow: 0 4px 18px rgba(37,99,235,.45) !important; }
 
         .tr-row:last-child { border-bottom: none !important; }
-
-        @media(min-width: 480px) {
-          .pw-modal { border-radius: 20px !important; max-height: 88vh; }
-          .pw-backdrop { align-items: center !important; }
-        }
 
         .settings-layout { display: flex; gap: 36px; align-items: flex-start; }
         .settings-sidebar {
@@ -580,6 +648,18 @@ export default function Settings() {
           .tgl-wrap   { padding: 8px 18px 20px !important; }
           .theme-grid { grid-template-columns: 1fr !important; }
         }
+
+        input[type=range]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 16px; height: 16px; border-radius: 50%;
+          background: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,.18);
+          cursor: pointer; border: none;
+        }
+        input[type=range]::-moz-range-thumb {
+          width: 16px; height: 16px; border-radius: 50%;
+          background: #2563EB; border: none;
+          box-shadow: 0 0 0 3px rgba(37,99,235,.18); cursor: pointer;
+        }
       `}</style>
 
       <div className="vs" style={{ minHeight: '100vh', background: C.bg }}>
@@ -589,9 +669,7 @@ export default function Settings() {
           {NAV.map(({ id, label, icon: Icon }) => {
             const on = active === id;
             return (
-              <button
-                key={id} data-id={id}
-                onClick={() => scrollTo(id)}
+              <button key={id} data-id={id} onClick={() => scrollTo(id)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
                   padding: '6px 14px', borderRadius: 99, border: 'none', cursor: 'pointer',
@@ -600,8 +678,7 @@ export default function Settings() {
                   color: on ? '#fff' : C.muted,
                   boxShadow: on ? '0 2px 8px rgba(37,99,235,.3)' : '0 1px 3px rgba(0,0,0,.08)',
                   transition: 'all .18s',
-                }}
-              >
+                }}>
                 <Icon style={{ width: 12, height: 12 }} />
                 {label}
               </button>
@@ -629,274 +706,59 @@ export default function Settings() {
                 </div>
               </div>
 
-              {groups.map(group => (
-                <div key={group} style={{ marginBottom: 24 }}>
-                  <p style={{
-                    fontSize: 10, fontWeight: 700, color: C.dim, textTransform: 'uppercase',
-                    letterSpacing: '.1em', marginBottom: 5, padding: '0 10px',
-                  }}>{group}</p>
-                  {NAV.filter(n => n.group === group).map(({ id, label, icon: Icon }) => {
-                    const on = active === id;
-                    return (
-                      <button
-                        key={id}
-                        className="nb-btn"
-                        onClick={() => scrollTo(id)}
-                        style={{
-                          position: 'relative', width: '100%', display: 'flex', alignItems: 'center',
-                          gap: 9, padding: '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
-                          marginBottom: 2, fontSize: 13, fontWeight: on ? 600 : 500, fontFamily: 'inherit',
-                          textAlign: 'left', background: on ? C.accentL : 'transparent',
-                          color: on ? C.accent : C.muted,
-                        }}
-                      >
-                        {on && (
-                          <motion.div
-                            layoutId="nav-bar"
-                            transition={SPR}
-                            style={{
-                              position: 'absolute', left: 0, top: 4, bottom: 4, width: 3,
-                              borderRadius: '0 3px 3px 0', background: C.accent,
-                            }}
-                          />
-                        )}
-                        <Icon style={{ width: 13, height: 13, flexShrink: 0, color: on ? C.accent : C.dim }} />
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+              {/* Single group — Preferences only */}
+              <div style={{ marginBottom: 24 }}>
+                <p style={{
+                  fontSize: 10, fontWeight: 700, color: C.dim, textTransform: 'uppercase',
+                  letterSpacing: '.1em', marginBottom: 5, padding: '0 10px',
+                }}>Preferences</p>
+                {NAV.map(({ id, label, icon: Icon }) => {
+                  const on = active === id;
+                  return (
+                    <button key={id} className="nb-btn" onClick={() => scrollTo(id)}
+                      style={{
+                        position: 'relative', width: '100%', display: 'flex', alignItems: 'center',
+                        gap: 9, padding: '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                        marginBottom: 2, fontSize: 13, fontWeight: on ? 600 : 500, fontFamily: 'inherit',
+                        textAlign: 'left', background: on ? C.accentL : 'transparent',
+                        color: on ? C.accent : C.muted,
+                      }}>
+                      {on && (
+                        <motion.div layoutId="nav-bar" transition={SPR}
+                          style={{
+                            position: 'absolute', left: 0, top: 4, bottom: 4, width: 3,
+                            borderRadius: '0 3px 3px 0', background: C.accent,
+                          }} />
+                      )}
+                      <Icon style={{ width: 13, height: 13, flexShrink: 0, color: on ? C.accent : C.dim }} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </aside>
 
             {/* ── MAIN ── */}
             <motion.main className="settings-main" variants={STG} initial="hidden" animate="show">
 
               <motion.div variants={UP} style={{ marginBottom: 28 }}>
-                <h1 style={{
-                  fontSize: isMobile ? 22 : 25, fontWeight: 700, color: C.ink,
-                  letterSpacing: '-.03em', lineHeight: 1.2,
-                }}>Account Settings</h1>
+                <h1 style={{ fontSize: isMobile ? 22 : 25, fontWeight: 700, color: C.ink, letterSpacing: '-.03em', lineHeight: 1.2 }}>
+                  Settings
+                </h1>
                 <p style={{ fontSize: 13.5, color: C.muted, marginTop: 6, lineHeight: 1.65 }}>
-                  {isMobile
-                    ? 'Manage your security and preferences'
-                    : 'Manage your security, preferences, and account data in one place'}
+                  {isMobile ? 'Manage your preferences' : 'Manage your preferences and account settings'}
                 </p>
               </motion.div>
 
-              {/* ══ SECURITY ══ */}
-              <SectionLabel label="Security" />
-
-              {/* Password */}
-              <Card id="sec-password">
-                <CH icon={Lock} title="Password" subtitle="Manage your login credentials" iColor={C.accent} iBg={C.accentL} />
-                <div className="card-body" style={{ padding: '22px' }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px',
-                    background: C.greenBg, border: `1px solid ${C.greenLn}`, borderRadius: 10, marginBottom: 20,
-                  }}>
-                    <CheckCircle2 style={{ width: 15, height: 15, color: C.green, flexShrink: 0 }} />
-                    <p style={{ fontSize: 13, color: '#166534' }}>
-                      Password last changed: <strong>Unknown</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowPwModal(true)}
-                    className="ac-btn"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8,
-                      height: isMobile ? 46 : 40, padding: '0 20px', borderRadius: 10,
-                      background: C.accent, color: '#fff', fontSize: isMobile ? 14 : 13.5, fontWeight: 600,
-                      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      transition: 'all .18s',
-                      boxShadow: '0 2px 10px rgba(37,99,235,.3)',
-                      width: isMobile ? '100%' : 'auto', justifyContent: 'center',
-                    }}
-                  >
-                    <Key style={{ width: 15, height: 15 }} /> Change Password
-                  </button>
-                </div>
-              </Card>
-
-              {/* Sessions */}
-              <div style={{ marginTop: 12 }}>
-                <Card id="sec-sessions">
-                  <CH icon={Activity} title="Active Sessions" subtitle="Devices signed into your account" iColor={C.purple} iBg={C.purpleBg} />
-                  <div className="card-body" style={{ padding: '22px' }}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '14px 16px', background: C.surfaceEl,
-                      border: `1px solid ${C.border}`, borderRadius: 12, gap: 12, flexWrap: 'wrap',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-                        <div style={{
-                          width: 40, height: 40, background: C.surface, border: `1px solid ${C.border}`,
-                          borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          boxShadow: '0 1px 3px rgba(0,0,0,.06)', flexShrink: 0,
-                        }}>
-                          <Monitor style={{ width: 16, height: 16, color: C.muted }} />
-                        </div>
-                        <div>
-                          <p style={{ fontSize: 13.5, fontWeight: 600, color: C.ink }}>This device</p>
-                          <p style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>Web Browser · Active now</p>
-                        </div>
-                      </div>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
-                        background: C.greenBg, border: `1px solid ${C.greenLn}`, borderRadius: 99,
-                      }}>
-                        <span style={{
-                          width: 6, height: 6, borderRadius: '50%', background: C.green,
-                          display: 'inline-block', animation: 'pulse 2s infinite',
-                        }} />
-                        <span style={{ fontSize: 11.5, fontWeight: 600, color: C.green }}>Current</span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Export */}
-              <div style={{ marginTop: 12 }}>
-                <Card id="sec-export">
-                  <CH icon={Download} title="Data Export" subtitle="Download a full copy of your data" iColor={C.teal} iBg={C.tealBg} />
-                  <div className="card-body" style={{ padding: '22px' }}>
-                    <p style={{ fontSize: 13.5, color: C.muted, marginBottom: 20, lineHeight: 1.7 }}>
-                      Includes profile, meeting history, chat logs, and settings exported as a{' '}
-                      <strong style={{ color: C.inkSub }}>JSON file</strong>.
-                    </p>
-                    <button
-                      onClick={handleExportData}
-                      className="sb-btn"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 8,
-                        height: isMobile ? 46 : 40, padding: '0 20px', borderRadius: 10,
-                        background: C.surface, border: `1.5px solid ${C.border}`, color: C.inkSub,
-                        fontSize: isMobile ? 14 : 13.5, fontWeight: 500, cursor: 'pointer',
-                        fontFamily: 'inherit', transition: 'all .18s',
-                        boxShadow: '0 1px 3px rgba(0,0,0,.06)',
-                        width: isMobile ? '100%' : 'auto', justifyContent: 'center',
-                      }}
-                    >
-                      <Download style={{ width: 15, height: 15 }} /> Export Data
-                    </button>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Danger Zone */}
-              <div style={{ marginTop: 12 }}>
-                <Card id="sec-danger" danger>
-                  <CH icon={Trash2} title="Danger Zone" subtitle="Permanent, irreversible actions" iColor={C.red} iBg={C.redBg} />
-                  <div className="card-body" style={{ padding: '22px' }}>
-                    <p style={{ fontSize: 13.5, color: C.muted, marginBottom: 20, lineHeight: 1.7 }}>
-                      Deleting your account will permanently remove all your data.{' '}
-                      <strong style={{ color: C.red }}>This cannot be undone.</strong>
-                    </p>
-                    <AnimatePresence mode="wait">
-                      {!showDelConfirm ? (
-                        <motion.div key="btn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <button
-                            onClick={() => setShowDelConfirm(true)}
-                            className="db-btn"
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 8,
-                              height: isMobile ? 46 : 40, padding: '0 20px', borderRadius: 10,
-                              background: C.redBg, border: `1.5px solid ${C.redLine}`, color: C.red,
-                              fontSize: isMobile ? 14 : 13.5, fontWeight: 500, cursor: 'pointer',
-                              fontFamily: 'inherit', transition: 'all .18s',
-                              width: isMobile ? '100%' : 'auto', justifyContent: 'center',
-                            }}
-                          >
-                            <Trash2 style={{ width: 15, height: 15 }} /> Delete Account
-                          </button>
-                        </motion.div>
-                      ) : (
-                        <motion.div
-                          key="confirm"
-                          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                          transition={{ duration: .2 }}
-                          style={{
-                            padding: 18, background: C.redBg, border: `1.5px solid ${C.redLine}`,
-                            borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 16,
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-                            <AlertCircle style={{ width: 16, height: 16, color: C.red, flexShrink: 0, marginTop: 2 }} />
-                            <p style={{ fontSize: 13.5, fontWeight: 500, color: '#991B1B', lineHeight: 1.6 }}>
-                              Enter your password to permanently delete your account
-                            </p>
-                          </div>
-                          <input
-                            type="password" value={delPass}
-                            onChange={e => setDelPass(e.target.value)}
-                            placeholder="Your current password"
-                            style={{
-                              width: '100%', height: 46, padding: '0 16px', borderRadius: 10,
-                              border: `1.5px solid ${C.redLine}`, background: '#fff',
-                              fontSize: 14, color: C.ink, outline: 'none', fontFamily: 'inherit', transition: 'all .15s',
-                            }}
-                            onFocus={e => { e.target.style.borderColor = C.red; e.target.style.boxShadow = '0 0 0 3px rgba(220,38,38,.1)'; }}
-                            onBlur={e => { e.target.style.borderColor = C.redLine; e.target.style.boxShadow = 'none'; }}
-                          />
-                          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 10 }}>
-                            <button
-                              onClick={handleDeleteAccount}
-                              disabled={deleting || !delPass}
-                              style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                height: 46, padding: '0 20px', borderRadius: 10, background: C.red,
-                                color: '#fff', fontSize: 14, fontWeight: 600, border: 'none',
-                                cursor: deleting || !delPass ? 'not-allowed' : 'pointer',
-                                opacity: deleting || !delPass ? .55 : 1, fontFamily: 'inherit',
-                                transition: 'all .18s', flex: isMobile ? 'none' : 1,
-                                boxShadow: '0 2px 8px rgba(220,38,38,.35)',
-                              }}
-                              onMouseEnter={e => { if (!deleting && delPass) e.currentTarget.style.background = '#B91C1C'; }}
-                              onMouseLeave={e => { e.currentTarget.style.background = C.red; }}
-                            >
-                              {deleting
-                                ? <Loader2 style={{ width: 15, height: 15, animation: 'spin 1s linear infinite' }} />
-                                : <Trash2 style={{ width: 15, height: 15 }} />}
-                              {deleting ? 'Deleting…' : 'Confirm Delete'}
-                            </button>
-                            <button
-                              onClick={() => { setShowDelConfirm(false); setDelPass(''); }}
-                              disabled={deleting}
-                              className="sb-btn"
-                              style={{
-                                height: 46, padding: '0 20px', borderRadius: 10, background: C.surface,
-                                border: `1.5px solid ${C.border}`, color: C.muted, fontSize: 14,
-                                fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', transition: 'background .15s',
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </Card>
-              </div>
-
-              {/* ══ PREFERENCES ══ */}
-              <SectionLabel label="Preferences" />
-
-              {/* Appearance */}
+              {/* ══ Appearance ══ */}
               <Card id="pref-appearance">
                 <CH icon={Sun} title="Appearance" subtitle="Choose your preferred color scheme" iColor={C.amber} iBg={C.amberBg} />
                 <div className="card-body" style={{ padding: '22px' }}>
-                  <div
-                    className="theme-grid"
-                    style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}
-                  >
+                  <div className="theme-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
                     {THEMES.map(({ id, label, icon: Icon, note }) => {
                       const on = av.theme === id;
                       return (
-                        <button
-                          key={id}
-                          onClick={() => ua('theme', id)}
+                        <button key={id} onClick={() => ua('theme', id)}
                           style={{
                             position: 'relative', display: 'flex', flexDirection: 'column',
                             alignItems: 'center', gap: 11, padding: '18px 12px', borderRadius: 12,
@@ -907,13 +769,11 @@ export default function Settings() {
                             transition: 'all .18s', fontFamily: 'inherit',
                           }}
                           onMouseEnter={e => { if (!on) { e.currentTarget.style.borderColor = '#93C5FD'; e.currentTarget.style.background = '#FAFBFC'; } }}
-                          onMouseLeave={e => { if (!on) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surface; } }}
-                        >
+                          onMouseLeave={e => { if (!on) { e.currentTarget.style.borderColor = C.border;  e.currentTarget.style.background = C.surface;  } }}>
                           <div style={{
                             width: 40, height: 40, borderRadius: 11,
                             background: on ? C.accent : C.surfaceEl,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            transition: 'background .18s',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .18s',
                           }}>
                             <Icon style={{ width: 17, height: 17, color: on ? '#fff' : C.muted }} />
                           </div>
@@ -922,16 +782,13 @@ export default function Settings() {
                             <p style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{note}</p>
                           </div>
                           {on && (
-                            <motion.div
-                              layoutId="theme-tick"
-                              transition={SPR}
+                            <motion.div layoutId="theme-tick" transition={SPR}
                               style={{
                                 position: 'absolute', top: 9, right: 9, width: 20, height: 20,
                                 borderRadius: '50%', background: C.accent,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 boxShadow: '0 1px 4px rgba(37,99,235,.4)',
-                              }}
-                            >
+                              }}>
                               <CheckCircle2 style={{ width: 12, height: 12, color: '#fff' }} />
                             </motion.div>
                           )}
@@ -942,7 +799,7 @@ export default function Settings() {
                 </div>
               </Card>
 
-              {/* Notifications */}
+              {/* ══ Notifications ══ */}
               <div style={{ marginTop: 12 }}>
                 <Card id="pref-notif">
                   <CH icon={Bell} title="Notifications" subtitle="Control when and how you're notified" iColor={C.purple} iBg={C.purpleBg} />
@@ -958,7 +815,12 @@ export default function Settings() {
                 </Card>
               </div>
 
-              {/* Audio & Video */}
+              {/* ══ Sound & Ringtones ══ */}
+              <div style={{ marginTop: 12 }}>
+                <SoundSettingsCard />
+              </div>
+
+              {/* ══ Audio & Video ══ */}
               <div style={{ marginTop: 12, paddingBottom: 40 }}>
                 <Card id="pref-av">
                   <CH icon={Activity} title="Audio & Video" subtitle="Default settings for meetings" iColor={C.teal} iBg={C.tealBg} />
@@ -976,11 +838,6 @@ export default function Settings() {
           </div>
         </div>
       </div>
-
-      {/* ─── Password Modal ─── */}
-      <AnimatePresence>
-        {showPwModal && <PasswordModal onClose={() => setShowPwModal(false)} />}
-      </AnimatePresence>
     </>
   );
 }

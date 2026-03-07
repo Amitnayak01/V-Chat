@@ -6,6 +6,7 @@
  *
  * Changes vs original:
  *  ✅ Imports saveCallRecord from callHistoryStore
+ *  ✅ Imports SoundEngine + readSoundSettings for user-configured ringtones
  *  ✅ 5 tracking refs (direction, accepted, rejected, peer, duration)
  *  ✅ callDuration synced into ref
  *  ✅ initiateCall tags direction + peer
@@ -13,6 +14,7 @@
  *  ✅ acceptCall marks callAcceptedRef = true
  *  ✅ onAudioCallRejected marks callRejectedRef = true
  *  ✅ fullCleanup saves record then resets tracking refs
+ *  ✅ makeRingtone() removed — SoundEngine handles all ringtone/vibration
  *  Everything else is 100% unchanged.
  */
 
@@ -24,6 +26,8 @@ import { useSocket } from './SocketContext';
 import { useAuth }   from './AuthContext';
 import { WEBRTC_CONFIG } from '../utils/webrtc';
 import { saveCallRecord } from '../utils/callHistoryStore';
+import { SoundEngine } from '../utils/SoundEngine';
+import { readSoundSettings } from '../hooks/useSoundSettings';
 
 const AudioCallContext = createContext(null);
 
@@ -44,42 +48,7 @@ const AUDIO_CONSTRAINTS = {
   video: false,
 };
 
-const makeRingtone = () => {
-  let audioCtx   = null;
-  let intervalId = null;
-
-  const playPattern = () => {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      audioCtx  = new Ctx();
-      const beep = (freq, startDelay, dur) => {
-        const osc  = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime + startDelay);
-        gain.gain.setValueAtTime(0, audioCtx.currentTime + startDelay);
-        gain.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + startDelay + 0.01);
-        gain.gain.linearRampToValueAtTime(0,    audioCtx.currentTime + startDelay + dur);
-        osc.start(audioCtx.currentTime + startDelay);
-        osc.stop (audioCtx.currentTime + startDelay + dur);
-      };
-      beep(440, 0.00, 0.40);
-      beep(480, 0.50, 0.40);
-    } catch (_) {}
-  };
-
-  return {
-    start: () => { playPattern(); intervalId = setInterval(playPattern, 3200); },
-    stop:  () => {
-      clearInterval(intervalId);
-      intervalId = null;
-      try { audioCtx?.close(); } catch (_) {}
-      audioCtx = null;
-    },
-  };
-};
+// makeRingtone() removed — SoundEngine handles all tone synthesis.
 
 export const AudioCallProvider = ({ children }) => {
   const { socket, emit } = useSocket();
@@ -100,7 +69,6 @@ export const AudioCallProvider = ({ children }) => {
   const localStreamRef     = useRef(null);
   const pendingCandidates  = useRef(new Map());
   const callTimerRef       = useRef(null);
-  const ringtoneRef        = useRef(null);
   const remoteStreamsRef   = useRef(new Map());
 
   // ── Call history tracking refs ─────────────────────────────────────────────
@@ -120,14 +88,15 @@ export const AudioCallProvider = ({ children }) => {
   useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
   useEffect(() => { callDurationRef.current = callDuration; }, [callDuration]);
 
+  // ── Ringtone — delegates to SoundEngine, reads user preferences ────────────
   const startRinging = useCallback(() => {
-    if (!ringtoneRef.current) ringtoneRef.current = makeRingtone();
-    ringtoneRef.current.start();
+    const s = readSoundSettings();
+    SoundEngine.playRingtone(s.audioCall.ringtone, s.audioCall.volume);
+    if (s.audioCall.vibration) SoundEngine.vibrate([300, 150, 300]);
   }, []);
 
   const stopRinging = useCallback(() => {
-    ringtoneRef.current?.stop();
-    ringtoneRef.current = null;
+    SoundEngine.stopRingtone();
   }, []);
 
   const startTimer = useCallback(() => {
@@ -185,11 +154,10 @@ export const AudioCallProvider = ({ children }) => {
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
-        // Both caller AND callee transition to 'connected' here
         setCallState('connected');
         callStateRef.current = 'connected';
         setCallStatus('');
-        if (!callTimerRef.current) startTimer();   // guard: only start once
+        if (!callTimerRef.current) startTimer();
       }
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') removeRemoteStream(userId);
     };
@@ -348,8 +316,8 @@ export const AudioCallProvider = ({ children }) => {
       setCallStatus('Connecting…');
       await acquireAudio();
 
-      callDirectionRef.current = 'incoming';   // confirm direction (already set, safe to repeat)
-      callAcceptedRef.current  = true;          // mark as accepted
+      callDirectionRef.current = 'incoming';
+      callAcceptedRef.current  = true;
 
       const callData = {
         callId: incoming.callId, peerId: incoming.callerId,
@@ -480,8 +448,6 @@ export const AudioCallProvider = ({ children }) => {
     onAudioWebRTCAnswer: async ({ answer, from }) => {
       if (!activeCallRef.current) return;
       await handleAudioAnswer(from, answer);
-      // NOTE: transition to 'connected' + startTimer is now handled by
-      // onconnectionstatechange in createAudioPeer — fires on BOTH sides.
     },
 
     onAudioWebRTCIce: async ({ candidate, from }) => {

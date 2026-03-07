@@ -339,6 +339,7 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
       </div>
 
       <h3 className="text-base sm:text-lg font-black text-slate-900 mb-3">Users</h3>
+      <p> Message the user you want to add to your contact list</p>
       <UserList onCallUser={onCallUser} searchQuery={searchQuery} />
     </div>
   );
