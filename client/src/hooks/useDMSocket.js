@@ -7,6 +7,8 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
+import { SoundEngine } from '../utils/SoundEngine';
+import { readSoundSettings } from './useSoundSettings';
 
 export const useDMSocket = ({
   conversationId,
@@ -41,6 +43,16 @@ export const useDMSocket = ({
     if (!socket) return;
 
     const handleNewMessage = (payload) => {
+      // ── Message tone: play only for messages from other users ────────────
+      const senderId = payload.message?.sender?._id ?? payload.message?.sender;
+      const isFromOther = senderId && String(senderId) !== String(currentUserId);
+      if (isFromOther) {
+        const s = readSoundSettings();
+        SoundEngine.playMessageTone(s.messages.tone, s.messages.volume);
+        if (s.messages.vibration) SoundEngine.vibrate([100]);
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       if (payload.conversationId === conversationRef.current) {
         onNewMessage?.(payload.message);
       } else {

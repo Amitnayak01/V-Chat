@@ -339,7 +339,7 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
       </div>
 
       <h3 className="text-base sm:text-lg font-black text-slate-900 mb-3">Users</h3>
-      <p> Message the user you want to add to your contact list</p>
+      <p> Message the user you want to add to your contact list.</p>
       <UserList onCallUser={onCallUser} searchQuery={searchQuery} />
     </div>
   );
@@ -448,7 +448,15 @@ const Dashboard = () => {
       setIncomingCallCount((c) => c + 1);
     });
     socket.on('call-accepted', ({ roomId }) => navigate(`/room/${roomId}`, { replace: true }));
-    socket.on('call-rejected', () => toast.error('Call was rejected'));
+
+    socket.on('call-rejected', () => {
+  toast.error('Call was declined', { icon: '📵' });
+  if (window.location.pathname.startsWith('/room/')) {
+    const returnPath = sessionStorage.getItem('vmeet_return_path') || '/dashboard';
+    sessionStorage.removeItem('vmeet_return_path');
+    navigate(returnPath, { replace: true });
+  }
+});
     socket.on('call-failed',   ({ message }) => toast.error(message));
     socket.on('user-online',   ({ username }) =>
       toast.success(`${username} is now online`, { icon: '🟢', duration: 2000 })
@@ -499,18 +507,19 @@ const Dashboard = () => {
     navigator.clipboard.writeText(link);
     toast.success('Meeting link copied!');
   };
-
-  const handleCallUser = (targetUser, roomId) => {
-    emit('call-user', {
-      callerId:     user._id,
-      receiverId:   targetUser._id,
-      roomId,
-      callerName:   user.username,
-      callerAvatar: user.avatar,
-    });
-    toast.success(`Calling ${targetUser.username}...`);
-    setTimeout(() => navigate(`/room/${roomId}`, { replace: true }), 1000);
-  };
+const handleCallUser = (targetUser, roomId) => {
+  // ── Save return path ──────────────────────────────────────────────────
+  sessionStorage.setItem('vmeet_return_path', window.location.pathname);
+  emit('call-user', {
+    callerId:     user._id,
+    receiverId:   targetUser._id,
+    roomId,
+    callerName:   user.username,
+    callerAvatar: user.avatar,
+  });
+  toast.success(`Calling ${targetUser.username}...`);
+  setTimeout(() => navigate(`/room/${roomId}`, { replace: true }), 1000);
+};
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;

@@ -13,12 +13,11 @@ import ShareModal        from './ShareModal';
 import ParticipantsPanel from './ParticipantsPanel';
 import ModeToggle        from './ModeToggle';
 import RecordingModal    from './RecordingModal';
-import HandRaisedBanner  from './HandRaisedBanner'; // ── NEW
+import HandRaisedBanner  from './HandRaisedBanner';
 
 import { useAuth }   from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { useWebRTC } from '../../context/WebRTCContext';
-// MediaRecorderHelper import removed — recording now uses native MediaRecorder + canvas compositor
 import useActiveSpeaker from '../../hooks/useActiveSpeaker';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,83 +28,54 @@ const VideoRoom = () => {
   const [mode,            setMode]            = useState(
     () => sessionStorage.getItem('videoMode') ?? 'call'
   );
-  const [meetingViewMode, setMeetingViewMode] = useState('grid');   // 'grid' | 'speaker'
+  const [meetingViewMode, setMeetingViewMode] = useState('grid');
   const [pinnedUserId,    setPinnedUserId]    = useState(null);
 
   // ── Screen share ─────────────────────────────────────────────────────────
-  const [screenStream,    setScreenStream]    = useState(null);     // local screen MediaStream
-  const [presenterUserId, setPresenterUserId] = useState(null);     // socket-signalled presenter
+  const [screenStream,    setScreenStream]    = useState(null);
+  const [presenterUserId, setPresenterUserId] = useState(null);
   const screenStreamRef   = useRef(null);
   const origVideoTrackRef = useRef(null);
 
   // ── UI state ─────────────────────────────────────────────────────────────
-  const [isChatOpen,         setIsChatOpen]         = useState(false);
-  const [unreadCount,        setUnreadCount]         = useState(0);
-  const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
-  const [participants,       setParticipants]        = useState([]);
-  const [isRecording,        setIsRecording]         = useState(false);
+  const [isChatOpen,           setIsChatOpen]           = useState(false);
+  const [unreadCount,          setUnreadCount]           = useState(0);
+  const [isParticipantsOpen,   setIsParticipantsOpen]   = useState(false);
+  const [participants,         setParticipants]          = useState([]);
+  const [isRecording,          setIsRecording]           = useState(false);
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
-  const [recordingDuration,  setRecordingDuration]   = useState(0);  // seconds
-  const [recordings,         setRecordings]          = useState([]);  // saved recordings library
-  const [isReconnecting,     setIsReconnecting]      = useState(false);
-  const [isShareModalOpen,   setIsShareModalOpen]    = useState(false);
-  const [handRaised,         setHandRaised]          = useState(false);
-  // ── RAISE HAND: Map(userId → { username, raisedAt }) — single source of truth
-  // for ALL raised hands including the local user
-  const [handRaisedMap,      setHandRaisedMap]       = useState(() => new Map());
-  // ── RAISE HAND: notification queue for the floating banner overlay
-  const [handNotifications,  setHandNotifications]   = useState([]);
+  const [recordingDuration,    setRecordingDuration]     = useState(0);
+  const [recordings,           setRecordings]            = useState([]);
+  const [isReconnecting,       setIsReconnecting]        = useState(false);
+  const [isShareModalOpen,     setIsShareModalOpen]      = useState(false);
+  const [handRaised,           setHandRaised]            = useState(false);
+  const [handRaisedMap,        setHandRaisedMap]         = useState(() => new Map());
+  const [handNotifications,    setHandNotifications]     = useState([]);
   const handNotifIdRef = useRef(0);
-  const [controlsVisible,    setControlsVisible]     = useState(true);
-  const [roomEvents,         setRoomEvents]          = useState([]);
-  const [floatReactions,     setFloatReactions]      = useState([]); // [{ id, emoji, username }]
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [roomEvents,      setRoomEvents]       = useState([]);
+  const [floatReactions,  setFloatReactions]   = useState([]);
 
-  // ── MUTE SYSTEM (Zoom-style) ─────────────────────────────────────────────
-  // roomHostId: who created the room — only they see/use "Mute Everyone"
-  const [roomHostId,        setRoomHostId]        = useState(null);
-  // forceMutedIds: Set of userIds that the host has force-muted
-  const [forceMutedIds,     setForceMutedIds]     = useState(() => new Set());
-  // allowSelfUnmute: whether force-muted participants can unmute themselves
-  const [allowSelfUnmute,   setAllowSelfUnmute]   = useState(true);
+  // ── MUTE SYSTEM ──────────────────────────────────────────────────────────
+  const [roomHostId,      setRoomHostId]      = useState(null);
+  const [forceMutedIds,   setForceMutedIds]   = useState(() => new Set());
+  const [allowSelfUnmute, setAllowSelfUnmute] = useState(true);
 
   // ── Refs ─────────────────────────────────────────────────────────────────
   const mediaRecorder    = useRef(null);
   const eventIdRef       = useRef(0);
-  const rafRef           = useRef(null);   // requestAnimationFrame id for canvas compositor
-  const canvasRef        = useRef(null);   // offscreen canvas
-  const chunksRef        = useRef([]);     // recorded blob chunks
-  const recTimerRef      = useRef(null);   // setInterval for duration counter
-  const recQualityRef    = useRef(null);   // quality config used for current recording
-
-  // Helper: push a room event to the activity feed
-  const pushEvent = useCallback((eventType, data = {}) => {
-    setRoomEvents(prev => [
-      ...prev,
-      { id: `evt-${++eventIdRef.current}`, eventType, data, ts: Date.now() },
-    ]);
-  }, []);
-  const floatIdRef = useRef(0);
-
-  // Show a floating emoji on the video for 2s then remove it
-  const showFloat = useCallback((emoji, username) => {
-    const id = ++floatIdRef.current;
-    setFloatReactions(prev => [...prev, { id, emoji, username }]);
-    setTimeout(() => setFloatReactions(prev => prev.filter(r => r.id !== id)), 2000);
-  }, []);
-
-  // ── RAISE HAND helpers ───────────────────────────────────────────────────
-  const pushHandNotif = useCallback((userId, username, type) => {
-    const id = `hand-${++handNotifIdRef.current}`;
-    setHandNotifications(prev => [...prev, { id, userId, username, type, ts: Date.now() }]);
-  }, []);
-
-  const dismissHandNotif = useCallback((id) => {
-    setHandNotifications(prev => prev.filter(n => n.id !== id));
-  }, []);
-
+  const rafRef           = useRef(null);
+  const canvasRef        = useRef(null);
+  const chunksRef        = useRef([]);
+  const recTimerRef      = useRef(null);
+  const recQualityRef    = useRef(null);
   const intentionalLeave = useRef(false);
   const hasJoined        = useRef(false);
   const hideTimer        = useRef(null);
+  // Tracks whether the remote participant ever joined (prevents false no-answer)
+  const otherJoinedRef   = useRef(false);
+  // 45-second no-answer timer
+  const noAnswerTimerRef = useRef(null);
 
   // ── External hooks ───────────────────────────────────────────────────────
   const { roomId }   = useParams();
@@ -128,6 +98,40 @@ const VideoRoom = () => {
   } = useWebRTC();
 
   const activeSpeaker = useActiveSpeaker(user._id, localStream, remoteStreams);
+
+  // ── Navigate back to wherever the caller came from ────────────────────────
+  // Before navigating into a room, callers must save:
+  //   sessionStorage.setItem('vmeet_return_path', window.location.pathname)
+  // This helper reads that value and falls back to /dashboard.
+  const navigateBack = useCallback(() => {
+    const returnPath = sessionStorage.getItem('vmeet_return_path') || '/dashboard';
+    sessionStorage.removeItem('vmeet_return_path');
+    navigate(returnPath, { replace: true });
+  }, [navigate]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const pushEvent = useCallback((eventType, data = {}) => {
+    setRoomEvents(prev => [
+      ...prev,
+      { id: `evt-${++eventIdRef.current}`, eventType, data, ts: Date.now() },
+    ]);
+  }, []);
+
+  const floatIdRef = useRef(0);
+  const showFloat = useCallback((emoji, username) => {
+    const id = ++floatIdRef.current;
+    setFloatReactions(prev => [...prev, { id, emoji, username }]);
+    setTimeout(() => setFloatReactions(prev => prev.filter(r => r.id !== id)), 2000);
+  }, []);
+
+  const pushHandNotif = useCallback((userId, username, type) => {
+    const id = `hand-${++handNotifIdRef.current}`;
+    setHandNotifications(prev => [...prev, { id, userId, username, type, ts: Date.now() }]);
+  }, []);
+
+  const dismissHandNotif = useCallback((id) => {
+    setHandNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
 
   // ── Mode toggle ──────────────────────────────────────────────────────────
   const toggleMode = useCallback(() => {
@@ -162,11 +166,15 @@ const VideoRoom = () => {
     });
 
     return () => {
+      // Clear no-answer timer on unmount
+      if (noAnswerTimerRef.current) {
+        clearTimeout(noAnswerTimerRef.current);
+        noAnswerTimerRef.current = null;
+      }
       if (intentionalLeave.current) {
         emit('leave-room', { roomId, userId: user._id });
         clearCurrentRoom();
       }
-      // Stop screen share if still active
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(t => t.stop());
         screenStreamRef.current = null;
@@ -186,6 +194,15 @@ const VideoRoom = () => {
       username: user.username,
       avatar:   user.avatar,
     });
+
+    // Auto-close if nobody joins within 45 seconds
+    noAnswerTimerRef.current = setTimeout(() => {
+      if (!otherJoinedRef.current) {
+        toast('No answer', { icon: '⏱️', duration: 3000 });
+        intentionalLeave.current = true;
+        navigateBack();
+      }
+    }, 45000);
   }, [connected, localStream]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Effect 3: Socket event listeners ─────────────────────────────────────
@@ -194,6 +211,12 @@ const VideoRoom = () => {
 
     const handlers = {
       'user-joined': ({ userId, username, participants: updated }) => {
+        // Cancel the no-answer timer — someone joined
+        otherJoinedRef.current = true;
+        if (noAnswerTimerRef.current) {
+          clearTimeout(noAnswerTimerRef.current);
+          noAnswerTimerRef.current = null;
+        }
         setParticipants(updated);
         createOffer(userId, roomId);
         pushEvent('user-joined', { username });
@@ -202,27 +225,42 @@ const VideoRoom = () => {
 
       'user-left': ({ userId }) => {
         const leaving = participants.find(p => (p.userId ?? p) === userId);
-        const name = leaving?.username ?? 'Someone';
+        const name    = leaving?.username ?? 'Someone';
         handlePeerDisconnect(userId);
+        // Pure filter only — navigation is handled by Effect 5 watching participants
         setParticipants(prev =>
-          prev.filter(p => (typeof p === 'string' ? p !== userId : p.userId !== userId))
+          prev.filter(p => typeof p === 'string' ? p !== userId : p.userId !== userId)
         );
         if (pinnedUserId === userId) setPinnedUserId(null);
         setPresenterUserId(prev => prev === userId ? null : prev);
-        // Clear their raised hand if they leave
         setHandRaisedMap(prev => {
           if (!prev.has(userId)) return prev;
           const next = new Map(prev);
           next.delete(userId);
           return next;
         });
-        // Clear force-muted state when user leaves
         setForceMutedIds(prev => {
           if (!prev.has(userId)) return prev;
           const n = new Set(prev); n.delete(userId); return n;
         });
         pushEvent('user-left', { username: name });
         toast(`${name} left the call`, { icon: '👋' });
+      },
+
+      // ── Call declined by receiver ─────────────────────────────────────
+      'call-rejected': () => {
+        toast('Call was declined', { icon: '📵', duration: 3000 });
+        setTimeout(() => {
+          intentionalLeave.current = true;
+          navigateBack();
+        }, 1500);
+      },
+
+      // ── Server-side timeout (no one answered) ─────────────────────────
+      'call-timeout': () => {
+        toast('No answer', { icon: '⏱️', duration: 3000 });
+        intentionalLeave.current = true;
+        navigateBack();
       },
 
       'room-participants': ({ participants: current }) => setParticipants(current),
@@ -246,12 +284,10 @@ const VideoRoom = () => {
       'webrtc-answer':        ({ answer, from })    => handleAnswer(from, answer),
       'webrtc-ice-candidate': ({ candidate, from }) => handleIceCandidate(from, candidate),
 
-      // Screen share — socket-signalled so remote viewers can find the right stream
       'user-screen-sharing': ({ userId, username, surface }) => {
         setPresenterUserId(userId);
-        const surfaceLabel = surface === 'browser'  ? 'a tab'
-                           : surface === 'window'   ? 'a window'
-                           : surface === 'monitor'  ? 'their screen'
+        const surfaceLabel = surface === 'browser' ? 'a tab'
+                           : surface === 'window'  ? 'a window'
                            : 'their screen';
         pushEvent('screen-share-start', { username, surface });
         toast(`${username} is sharing ${surfaceLabel}`, { icon: '🖥️' });
@@ -264,7 +300,6 @@ const VideoRoom = () => {
         toast('Screen sharing stopped', { icon: '🖥️' });
       },
 
-      // Legacy event name support
       'stop-screen-share': ({ userId }) => {
         setPresenterUserId(prev => prev === userId ? null : prev);
       },
@@ -272,8 +307,6 @@ const VideoRoom = () => {
       'recording-started': () => { pushEvent('recording-start', {}); toast.success('Recording started'); },
       'recording-stopped': () => { pushEvent('recording-stop', {}); toast.success('Recording saved'); },
 
-      // ── RAISE HAND: upgraded handlers ─────────────────────────────────
-      // Now receives username + raisedAt; server broadcasts to ALL including sender
       'hand-raised': ({ userId, username, raisedAt }) => {
         const resolvedName = username
           || participants.find(p => (p.userId ?? p) === userId)?.username
@@ -284,13 +317,9 @@ const VideoRoom = () => {
           return next;
         });
         pushEvent('hand-raised', { username: resolvedName });
-        // NOTE: no pushHandNotif here — the persistent RaisedCard is driven
-        // directly by handRaisedMap so it stays until the hand is lowered
-        // Keep local bool in sync when server confirms own raise
         if (userId === user._id) setHandRaised(true);
       },
 
-      // ── RAISE HAND: late-joiner / reconnect state restore ─────────────
       'hands-state-sync': ({ hands }) => {
         setHandRaisedMap(prev => {
           const next = new Map(prev);
@@ -299,7 +328,6 @@ const VideoRoom = () => {
           });
           return next;
         });
-        // Restore own handRaised bool if server says our hand is up
         if (hands.some(h => h.userId === user._id)) setHandRaised(true);
       },
 
@@ -314,7 +342,6 @@ const VideoRoom = () => {
         });
         pushEvent('hand-lowered', { username: resolvedName });
         pushHandNotif(userId, resolvedName, 'lowered');
-        // Keep local bool in sync when server confirms own lower
         if (userId === user._id) setHandRaised(false);
       },
 
@@ -323,47 +350,28 @@ const VideoRoom = () => {
         pushEvent('reaction', { username, emoji });
       },
 
-      // ── MUTE SYSTEM: Zoom-style host mute ─────────────────────────────
-      //
-      // mute-state-sync — received on join AND reconnect.
-      //   Sets who the host is, who is currently force-muted, and whether
-      //   self-unmute is permitted. If the local user is in mutedIds we
-      //   immediately mute their audio track via forceMute().
-      //
       'mute-state-sync': ({ hostId, mutedIds = [], allowUnmute }) => {
         setRoomHostId(hostId);
         const newSet = new Set(mutedIds);
         setForceMutedIds(newSet);
         setAllowSelfUnmute(!!allowUnmute);
-        // Restore local mute track state if we were force-muted before join/reconnect
-        if (newSet.has(user._id)) {
-          forceMute();
-        }
+        if (newSet.has(user._id)) forceMute();
       },
 
-      // host-muted-all — host just clicked "Mute Everyone".
-      //   Every client (including host) receives this; each client checks
-      //   whether their own userId is in mutedIds and mutes accordingly.
-      //
       'host-muted-all': ({ hostId, mutedIds = [], allowUnmute }) => {
         setRoomHostId(hostId);
         const newSet = new Set(mutedIds);
         setForceMutedIds(newSet);
         setAllowSelfUnmute(!!allowUnmute);
-
         if (newSet.has(user._id)) {
-          // Mute this client's audio track
           forceMute();
           toast('You were muted by the host', { icon: '🔇' });
           pushEvent('muted-by-host', { username: 'You' });
         } else {
-          // Host themselves — just log the system event
           pushEvent('host-muted-all', {});
         }
       },
 
-      // host-muted-you — targeted mute of this specific client.
-      //
       'host-muted-you': ({ hostId, allowUnmute }) => {
         setForceMutedIds(prev => { const n = new Set(prev); n.add(user._id); return n; });
         setAllowSelfUnmute(!!allowUnmute);
@@ -372,8 +380,6 @@ const VideoRoom = () => {
         pushEvent('muted-by-host', { username: 'You' });
       },
 
-      // unmute-permission-changed — host toggled the "allow self-unmute" setting.
-      //
       'unmute-permission-changed': ({ allowUnmute }) => {
         setAllowSelfUnmute(!!allowUnmute);
         if (!allowUnmute) {
@@ -383,9 +389,6 @@ const VideoRoom = () => {
         }
       },
 
-      // participant-unmuted — a peer self-unmuted (server confirmed it's allowed).
-      //   Remove them from our local forceMutedIds so their tile shows correct state.
-      //
       'participant-unmuted': ({ userId }) => {
         setForceMutedIds(prev => {
           if (!prev.has(userId)) return prev;
@@ -393,14 +396,11 @@ const VideoRoom = () => {
         });
       },
 
-      // mute-error — server rejected an unauthorized mute attempt.
-      //
       'mute-error': ({ message }) => {
         toast.error(message ?? 'Mute action not permitted');
       },
     };
 
-    // Register all
     Object.entries(handlers).forEach(([ev, fn]) => socket.on(ev, fn));
 
     return () => {
@@ -421,20 +421,30 @@ const VideoRoom = () => {
     };
   }, [socket]);
 
+  // ── Effect 5: Auto-close when other person leaves a 2-person call ─────────
+  // Runs whenever participants changes. Navigation must NOT happen inside
+  // a setState updater (impure) — this effect is the correct place for it.
+  useEffect(() => {
+    if (!hasJoined.current || !otherJoinedRef.current) return;
+    if (participants.length === 0) {
+      const t = setTimeout(() => {
+        intentionalLeave.current = true;
+        navigateBack();
+      }, 1500);
+      return () => clearTimeout(t);
+    }
+  }, [participants, navigateBack]);
+
   // ── Screen share ──────────────────────────────────────────────────────────
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   const doStopSharing = useCallback(async () => {
-    // 1. Stop all screen capture tracks
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(t => t.stop());
       screenStreamRef.current = null;
     }
-
-    // 2. Restore original camera track in localStream so local preview recovers
     const cameraTrack = origVideoTrackRef.current;
     if (cameraTrack && localStream) {
-      // Swap the screen track back for the camera track in the local MediaStream
       const oldScreenTrack = localStream.getVideoTracks()[0];
       if (oldScreenTrack && oldScreenTrack !== cameraTrack) {
         localStream.removeTrack(oldScreenTrack);
@@ -444,15 +454,9 @@ const VideoRoom = () => {
       }
     }
     origVideoTrackRef.current = null;
-
-    // 3. Tell WebRTC context to replace back to camera in all peer connections
     stopScreenShare(roomId);
-
-    // 4. Clear UI state
     setScreenStream(null);
     setPresenterUserId(null);
-
-    // 5. Notify peers
     emit('user-stopped-screen-sharing', { roomId, userId: user._id });
     pushEvent('screen-share-stop', { username: 'You' });
     toast('Screen sharing stopped', { icon: '🖥️' });
@@ -463,29 +467,18 @@ const VideoRoom = () => {
       toast('Screen sharing is not supported on mobile devices.', { icon: '🖥️', duration: 4000 });
       return;
     }
-
-    if (screenStreamRef.current) {
-      await doStopSharing();
-      return;
-    }
+    if (screenStreamRef.current) { await doStopSharing(); return; }
 
     try {
-      // Request highest quality with system audio when available
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          frameRate:   { ideal: 30, max: 60 },
-          width:       { ideal: 1920, max: 3840 },
-          height:      { ideal: 1080, max: 2160 },
-          cursor:      'always',
-          displaySurface: 'monitor', // hint: prefer full screen
+          frameRate:      { ideal: 30, max: 60 },
+          width:          { ideal: 1920, max: 3840 },
+          height:         { ideal: 1080, max: 2160 },
+          cursor:         'always',
+          displaySurface: 'monitor',
         },
-        audio: {
-          // System audio (tab/app audio) — user can grant or deny
-          echoCancellation: false,
-          noiseSuppression: false,
-          sampleRate:       48000,
-        },
-        // Chrome-specific: show all surfaces, prefer current tab last
+        audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 },
         selfBrowserSurface: 'exclude',
         surfaceSwitching:   'include',
         systemAudio:        'include',
@@ -494,53 +487,36 @@ const VideoRoom = () => {
       const screenTrack = stream.getVideoTracks()[0];
       if (!screenTrack) { toast.error('No screen track available'); return; }
 
-      // Log what the browser actually granted
       const settings = screenTrack.getSettings();
       console.log('[ScreenShare] granted:', settings.displaySurface,
         `${settings.width}×${settings.height} @${settings.frameRate}fps`);
 
-      // Save camera track ref before replacing
       origVideoTrackRef.current = localStream?.getVideoTracks()[0] ?? null;
+      screenStreamRef.current   = stream;
 
-      screenStreamRef.current = stream;
-
-      // Replace video in ALL peer connections FIRST (prevents hall-of-mirrors)
       await replaceVideoTrack(screenTrack);
 
-      // If system audio was granted, add its track to each peer connection too
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
-        // We don't replace the mic — we ADD the screen audio as a second audio track
-        // This lets remote viewers hear both the presenter's mic AND shared audio
         console.log('[ScreenShare] system audio track acquired:', audioTrack.label);
       }
 
-      // Now safe to update UI
       setScreenStream(stream);
       setPresenterUserId(user._id);
       startScreenShare(roomId);
-
-      // Notify peers
       emit('user-screen-sharing', {
         roomId,
         userId:   user._id,
         username: user.username,
         surface:  settings.displaySurface ?? 'monitor',
       });
-
-      // Auto-stop when browser toolbar "Stop sharing" is clicked
       screenTrack.addEventListener('ended', () => doStopSharing());
-
       toast.success('Screen sharing started', { icon: '🖥️' });
 
     } catch (err) {
-      if (err.name === 'NotAllowedError') {
-        // User cancelled the picker — silent, expected
-        return;
-      }
+      if (err.name === 'NotAllowedError')   return;
       if (err.name === 'NotSupportedError') {
-        toast.error('Screen sharing is not supported in this browser');
-        return;
+        toast.error('Screen sharing is not supported in this browser'); return;
       }
       console.error('[ScreenShare]', err);
       toast.error('Failed to start screen sharing');
@@ -550,14 +526,14 @@ const VideoRoom = () => {
   // ── Camera switch (mobile) ────────────────────────────────────────────────
   const handleSwitchCamera = useCallback(async () => {
     try {
-      const devices    = await navigator.mediaDevices.enumerateDevices();
+      const devices     = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(d => d.kind === 'videoinput');
       if (videoInputs.length < 2) { toast('No other camera found'); return; }
 
-      const current  = localStream?.getVideoTracks()[0];
-      const curId    = current?.getSettings()?.deviceId;
-      const curIdx   = videoInputs.findIndex(d => d.deviceId === curId);
-      const next     = videoInputs[(curIdx + 1) % videoInputs.length];
+      const current = localStream?.getVideoTracks()[0];
+      const curId   = current?.getSettings()?.deviceId;
+      const curIdx  = videoInputs.findIndex(d => d.deviceId === curId);
+      const next    = videoInputs[(curIdx + 1) % videoInputs.length];
 
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { deviceId: { exact: next.deviceId } },
@@ -578,39 +554,34 @@ const VideoRoom = () => {
     }
   }, [localStream]);
 
-  // ── Recording (professional canvas compositor — quality-aware, with timer) ──
-
-  // Called by RecordingModal with { quality, includeAudio }
+  // ── Recording ─────────────────────────────────────────────────────────────
   const handleStartRecording = useCallback(async ({ quality, includeAudio = true } = {}) => {
     try {
-      if (!localStream) { throw new Error('No local stream'); }
+      if (!localStream) throw new Error('No local stream');
 
       const W   = quality?.w   ?? 1280;
       const H   = quality?.h   ?? 720;
       const BPS = quality?.bps ?? 3_000_000;
       recQualityRef.current = quality;
 
-      // ── Canvas setup ─────────────────────────────────────────────────────
       const canvas = document.createElement('canvas');
       canvas.width  = W;
       canvas.height = H;
       canvasRef.current = canvas;
       const ctx = canvas.getContext('2d');
 
-      // Zoom-fill: cover scale + centre crop, clipped to tile rect
       const drawZoomFill = (v, tx, ty, tw, th) => {
         const vw = v.videoWidth, vh = v.videoHeight;
         if (!vw || !vh) return;
         const scale = Math.max(tw / vw, th / vh);
-        const srcW = tw / scale, srcH = th / scale;
-        const srcX = (vw - srcW) / 2, srcY = (vh - srcH) / 2;
+        const srcW  = tw / scale, srcH = th / scale;
+        const srcX  = (vw - srcW) / 2, srcY = (vh - srcH) / 2;
         ctx.save();
         ctx.beginPath(); ctx.rect(tx, ty, tw, th); ctx.clip();
         ctx.drawImage(v, srcX, srcY, srcW, srcH, tx, ty, tw, th);
         ctx.restore();
       };
 
-      // Dedup by srcObject id
       const getUniqueVideos = () => {
         const seen = new Set(), result = [];
         for (const v of document.querySelectorAll('video')) {
@@ -624,7 +595,6 @@ const VideoRoom = () => {
         return result;
       };
 
-      // Layout engine — fills canvas completely
       const computeLayout = (n) => {
         if (n === 1) return [{ x: 0, y: 0, w: W, h: H }];
         if (n === 2) return [{ x: 0, y: 0, w: W/2, h: H }, { x: W/2, y: 0, w: W/2, h: H }];
@@ -639,9 +609,9 @@ const VideoRoom = () => {
         const cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
         const tW = W / cols, tH = H / rows;
         return Array.from({ length: n }, (_, i) => {
-          const r = Math.floor(i / cols), isLast = r === rows - 1;
+          const r   = Math.floor(i / cols), isLast = r === rows - 1;
           const lrc = n - r * cols, cW = isLast ? W / lrc : tW;
-          const c = isLast ? i - r * cols : i % cols;
+          const c   = isLast ? i - r * cols : i % cols;
           return { x: c * cW, y: r * tH, w: cW, h: tH };
         });
       };
@@ -660,15 +630,13 @@ const VideoRoom = () => {
       };
       drawFrame();
 
-      // ── Canvas stream ────────────────────────────────────────────────────
       const canvasStream = canvas.captureStream(30);
 
-      // ── Audio mix ────────────────────────────────────────────────────────
       if (includeAudio) {
         try {
           const AudioCtx = window.AudioContext || window.webkitAudioContext;
           const audioCtx = new AudioCtx();
-          const dest = audioCtx.createMediaStreamDestination();
+          const dest     = audioCtx.createMediaStreamDestination();
           const addAudio = (s) => {
             if (!s?.getAudioTracks().length) return;
             try { audioCtx.createMediaStreamSource(s).connect(dest); } catch {}
@@ -679,7 +647,6 @@ const VideoRoom = () => {
         } catch (e) { console.warn('[Rec] Audio mix skipped:', e); }
       }
 
-      // ── MediaRecorder ────────────────────────────────────────────────────
       const mimeType =
         MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' :
         MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' :
@@ -691,23 +658,21 @@ const VideoRoom = () => {
       rec.start(500);
       mediaRecorder.current = rec;
 
-      // ── Duration timer ───────────────────────────────────────────────────
       setRecordingDuration(0);
       recTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
-
       setIsRecording(true);
       emit('start-recording', { roomId });
 
     } catch (err) {
       console.error('[Recording start]', err);
-      throw err; // re-throw so modal can handle
+      throw err;
     }
   }, [localStream, remoteStreams, roomId, emit]);
 
   const handleStopRecording = useCallback(async () => {
     try {
-      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-      if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null; }
+      if (rafRef.current)      { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (recTimerRef.current) { clearInterval(recTimerRef.current);   recTimerRef.current = null; }
 
       const duration = await new Promise((resolve) => {
         let dur = 0;
@@ -728,7 +693,6 @@ const VideoRoom = () => {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
       })}`;
 
-      // Save to local recordings library
       const rec = {
         id:        Date.now().toString(),
         name,
@@ -739,9 +703,8 @@ const VideoRoom = () => {
       };
       setRecordings(prev => [rec, ...prev]);
 
-      // Trigger download
-      const a = document.createElement('a');
-      a.href = url;
+      const a    = document.createElement('a');
+      a.href     = url;
       a.download = `meeting-${roomId}-${Date.now()}.webm`;
       a.click();
 
@@ -760,7 +723,6 @@ const VideoRoom = () => {
     }
   }, [recordingDuration, roomId, emit]);
 
-  // Keep legacy toggle for Controls button (opens modal if not recording, stops if recording)
   const handleToggleRecording = useCallback(() => {
     if (isRecording) {
       handleStopRecording().catch(() => toast.error('Failed to save recording'));
@@ -780,39 +742,32 @@ const VideoRoom = () => {
   const handleDownloadRecording = useCallback((id) => {
     const rec = recordings.find(r => r.id === id);
     if (!rec) return;
-    const a = document.createElement('a');
-    a.href = rec.url;
+    const a    = document.createElement('a');
+    a.href     = rec.url;
     a.download = `${rec.name}.webm`;
     a.click();
   }, [recordings]);
 
   // ── End call ─────────────────────────────────────────────────────────────
-  // replace:true removes the room from history so the back button
-  // from /dashboard can never navigate back into the room.
   const handleEndCall = useCallback(() => {
     if (isRecording) { toast.error('Stop recording before leaving'); return; }
     intentionalLeave.current = true;
-    navigate('/dashboard', { replace: true });
-  }, [isRecording, navigate]);
+    navigateBack();
+  }, [isRecording, navigateBack]);
 
   // ── Hand raise ────────────────────────────────────────────────────────────
-  // UPGRADED: optimistic local update so UI responds instantly before server ack
   const handleRaiseHand = useCallback(() => {
     const next = !handRaised;
     setHandRaised(next);
-
     if (next) {
-      // Optimistic: add own hand immediately — server will confirm via hand-raised broadcast
       const raisedAt = Date.now();
       setHandRaisedMap(prev => {
         const m = new Map(prev);
         m.set(user._id, { username: user.username, raisedAt });
         return m;
       });
-      // Send username so server can include it in the broadcast
       emit('raise-hand', { roomId, userId: user._id, username: user.username });
     } else {
-      // Optimistic: remove own hand immediately
       setHandRaisedMap(prev => {
         const m = new Map(prev);
         m.delete(user._id);
@@ -822,13 +777,10 @@ const VideoRoom = () => {
     }
   }, [handRaised, roomId, user._id, user.username, emit]);
 
-  // ── Emoji reaction ───────────────────────────────────────────────────────────
+  // ── Emoji reaction ────────────────────────────────────────────────────────
   const handleReaction = useCallback((emoji) => {
-    // Show float locally for the sender immediately
     showFloat(emoji, user.username);
-    // Push to local chat feed immediately
     pushEvent('reaction', { username: user.username, emoji });
-    // Broadcast to all peers via socket
     emit('send-reaction', { roomId, userId: user._id, username: user.username, emoji });
   }, [pushEvent, showFloat, user, roomId, emit]);
 
@@ -837,14 +789,12 @@ const VideoRoom = () => {
     setPinnedUserId(prev => prev === uid ? null : uid);
   }, []);
 
-  // ── Mute all (host-only, Zoom-style) ─────────────────────────────────────
-  // isHost is derived from roomHostId which comes from the server via mute-state-sync.
-  // The server independently validates this — the check here is just a UI guard.
-  const isHost        = roomHostId === user._id;
-  const isForceMuted  = forceMutedIds.has(user._id);
+  // ── Mute all ─────────────────────────────────────────────────────────────
+  const isHost       = roomHostId === user._id;
+  const isForceMuted = forceMutedIds.has(user._id);
 
   const handleMuteAll = useCallback(() => {
-    if (!isHost) return; // UI guard — server also validates
+    if (!isHost) return;
     emit('mute-all', { roomId, userId: user._id, allowUnmute: true });
   }, [isHost, emit, roomId, user._id]);
 
@@ -862,17 +812,12 @@ const VideoRoom = () => {
   // ── Render ────────────────────────────────────────────────────────────────
   const isMeetingMode = mode === 'meeting';
 
-  // ── RAISE HAND: derive Set + sorted list for downstream components ────────
-  // handRaisedIds: Set<userId> — used by ParticipantsPanel (unchanged prop API)
   const handRaisedIds = new Set(handRaisedMap.keys());
 
-  // raisedHands: Array<{ userId, username }> sorted by raisedAt asc
-  // Passed to HandRaisedBanner as persistent cards (stay until hand lowered)
   const raisedHands = Array.from(handRaisedMap.entries())
     .sort(([, a], [, b]) => a.raisedAt - b.raisedAt)
     .map(([userId, { username }]) => ({ userId, username }));
 
-  // sortedParticipants: raised hands bubble to top, ordered by raisedAt asc
   const sortedParticipants = [...participants].sort((a, b) => {
     const aHand = handRaisedMap.get(a.userId ?? a);
     const bHand = handRaisedMap.get(b.userId ?? b);
@@ -889,13 +834,10 @@ const VideoRoom = () => {
     isScreenSharing: !!screenStreamRef.current || isScreenSharing,
     isRecording,
     onToggleMute: () => {
-      // If force-muted by host and self-unmute is not permitted, block + warn
       if (isForceMuted && !allowSelfUnmute) {
         toast('The host has disabled unmuting', { icon: '🔒', duration: 3000 });
         return;
       }
-      // If currently force-muted but self-unmute IS allowed — use forceUnmute
-      // and notify the server so it removes us from mutedByHost set
       if (isForceMuted && allowSelfUnmute) {
         forceUnmute();
         setForceMutedIds(prev => { const n = new Set(prev); n.delete(user._id); return n; });
@@ -903,7 +845,6 @@ const VideoRoom = () => {
         pushEvent('unmuted', { username: 'You' });
         return;
       }
-      // Normal self-mute toggle
       toggleMute();
       pushEvent(isMuted ? 'unmuted' : 'muted', { username: 'You' });
     },
@@ -915,28 +856,26 @@ const VideoRoom = () => {
     onToggleRecording:    handleToggleRecording,
     onEndCall:            handleEndCall,
     onSwitchCamera:       handleSwitchCamera,
-    // Meeting extras
-    participantCount:       participants.length,
-    onToggleChat:           () => setIsChatOpen(o => {
+    participantCount:     participants.length,
+    onToggleChat: () => setIsChatOpen(o => {
       if (!o) setUnreadCount(0);
       return !o;
     }),
     isChatOpen,
-    onToggleParticipants:   () => setIsParticipantsOpen(o => !o),
+    onToggleParticipants:  () => setIsParticipantsOpen(o => !o),
     unreadCount,
     isParticipantsOpen,
-    viewMode:               meetingViewMode,
-    onToggleViewMode:       () => setMeetingViewMode(v => v === 'grid' ? 'speaker' : 'grid'),
-    onRaiseHand:            handleRaiseHand,
+    viewMode:              meetingViewMode,
+    onToggleViewMode:      () => setMeetingViewMode(v => v === 'grid' ? 'speaker' : 'grid'),
+    onRaiseHand:           handleRaiseHand,
     handRaised,
-    raisedHandCount:        handRaisedIds.size,
-    // ── MUTE SYSTEM props ──────────────────────────────────────────────────
-    isHost,               // only host sees Mute Everyone button
-    isForceMuted,         // local user is force-muted → show locked mic UI
-    allowSelfUnmute,      // host's permission flag
-    onMuteAll:            handleMuteAll,
-    onToggleAllowUnmute:  handleToggleAllowUnmute,
-    onReaction:             handleReaction,
+    raisedHandCount:       handRaisedIds.size,
+    isHost,
+    isForceMuted,
+    allowSelfUnmute,
+    onMuteAll:             handleMuteAll,
+    onToggleAllowUnmute:   handleToggleAllowUnmute,
+    onReaction:            handleReaction,
     recordingDuration,
   };
 
@@ -946,16 +885,13 @@ const VideoRoom = () => {
       onControlsReveal={resetHideTimer}
       onClick={resetHideTimer}
     >
-      {/* ── Main column ──────────────────────────────────────────────────── */}
       <div className={`flex-1 flex flex-col min-w-0 overflow-hidden ${isMeetingMode ? 'bg-slate-950' : 'relative bg-black'}`}>
 
         {/* Reconnecting banner */}
         <AnimatePresence>
           {isReconnecting && (
             <motion.div
-              initial={{ y: -40 }}
-              animate={{ y: 0 }}
-              exit={{ y: -40 }}
+              initial={{ y: -40 }} animate={{ y: 0 }} exit={{ y: -40 }}
               className="absolute top-0 inset-x-0 z-50 bg-yellow-500/90 backdrop-blur-sm
                          flex items-center justify-center gap-2 py-2
                          text-xs font-semibold text-white"
@@ -966,9 +902,8 @@ const VideoRoom = () => {
           )}
         </AnimatePresence>
 
-        {/* ── Top bar ─────────────────────────────────────────────────────── */}
+        {/* Top bar */}
         {isMeetingMode ? (
-          /* MEETING: fixed top bar in normal flow */
           <div className="flex-shrink-0 z-20 px-3 sm:px-5 py-2.5 bg-slate-900
                           border-b border-white/10 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -982,8 +917,7 @@ const VideoRoom = () => {
                            bg-blue-500/20 hover:bg-blue-500/30 text-blue-300
                            border border-blue-500/30 text-xs transition-all"
               >
-                <Share2 className="w-3 h-3" />
-                <span>Share</span>
+                <Share2 className="w-3 h-3" /><span>Share</span>
               </button>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -991,13 +925,10 @@ const VideoRoom = () => {
             </div>
           </div>
         ) : (
-          /* CALL: overlay top bar */
           <AnimatePresence>
             {controlsVisible && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="absolute top-0 inset-x-0 z-20 p-2 sm:p-4
                            bg-gradient-to-b from-black/60 to-transparent"
               >
@@ -1048,7 +979,7 @@ const VideoRoom = () => {
           </AnimatePresence>
         )}
 
-        {/* ── Video grid (fills remaining space) ──────────────────────────── */}
+        {/* Video grid */}
         <div className="flex-1 relative overflow-hidden min-h-0">
           <VideoGrid
             mode={mode}
@@ -1071,7 +1002,7 @@ const VideoRoom = () => {
           />
         </div>
 
-        {/* ── Floating emoji reactions (visible to all) ───────────────────── */}
+        {/* Floating emoji reactions */}
         <AnimatePresence>
           {floatReactions.map(r => (
             <motion.div
@@ -1093,7 +1024,7 @@ const VideoRoom = () => {
           ))}
         </AnimatePresence>
 
-        {/* ── RAISE HAND: floating notification banners (top-right) ─────── */}
+        {/* Raise hand banner */}
         <HandRaisedBanner
           raisedHands={raisedHands}
           notifications={handNotifications}
@@ -1101,7 +1032,7 @@ const VideoRoom = () => {
           localUserId={user._id}
         />
 
-        {/* ── Controls ────────────────────────────────────────────────────── */}
+        {/* Controls */}
         {isMeetingMode ? (
           <div className="flex-shrink-0 z-20">
             <Controls {...controlProps} />
@@ -1113,7 +1044,7 @@ const VideoRoom = () => {
         )}
       </div>
 
-      {/* ── Participants panel (meeting) ───────────────────────────────────── */}
+      {/* Participants panel */}
       {isMeetingMode && (
         <ParticipantsPanel
           isOpen={isParticipantsOpen}
@@ -1129,7 +1060,7 @@ const VideoRoom = () => {
         />
       )}
 
-      {/* ── Chat sidebar ──────────────────────────────────────────────────── */}
+      {/* Chat sidebar */}
       <ChatSidebar
         isMobile={isMobile}
         roomId={roomId}
@@ -1140,7 +1071,7 @@ const VideoRoom = () => {
         onUnread={(n) => setUnreadCount(n)}
       />
 
-      {/* ── Share modal ───────────────────────────────────────────────────── */}
+      {/* Share modal */}
       <ShareModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
@@ -1148,7 +1079,7 @@ const VideoRoom = () => {
         meetingLink={`${window.location.origin}/join/${roomId}`}
       />
 
-      {/* ── Recording modal ───────────────────────────────────────────────── */}
+      {/* Recording modal */}
       <RecordingModal
         isOpen={isRecordingModalOpen}
         onClose={() => setIsRecordingModalOpen(false)}

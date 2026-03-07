@@ -1,6 +1,21 @@
+import { useEffect } from 'react';
 import { Phone, PhoneOff } from 'lucide-react';
+import { SoundEngine } from '../../utils/SoundEngine';
+import { readSoundSettings } from '../../hooks/useSoundSettings';
 
 const IncomingCall = ({ caller, onAccept, onReject }) => {
+
+  // ── Ringtone: start on mount, stop on unmount (accept OR reject) ──────────
+  useEffect(() => {
+    const s = readSoundSettings();
+    SoundEngine.playVideoCallTone(s.videoCall.ringtone, s.videoCall.volume);
+    if (s.videoCall.vibration) SoundEngine.vibrate([300, 150, 300]);
+
+    return () => {
+      SoundEngine.stopVideoCallTone();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!caller) return null;
 
   return (

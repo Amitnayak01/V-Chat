@@ -15,7 +15,10 @@ import ForwardModal from './ForwardModal';
 import DeleteMessageModal from './DeleteMessageModal';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
- import { useAudioCall } from '../../../context/AudioCallContext'; 
+import { useAudioCall } from '../../../context/AudioCallContext'; 
+import { SoundEngine } from '../../../utils/SoundEngine';
+import { readSoundSettings } from '../../../hooks/useSoundSettings';
+
 /* ─── Reply persistence ─────────────────────────────────────────────────── */
 const _LS_KEY = 'vmeet_replies';
 const _readStore = () => {
@@ -322,6 +325,8 @@ const { initiateCall } = useAudioCall();    // ← NEW
   const msgCacheRef         = useRef({});
   const messageRefsMap      = useRef(new Map());
   const highlightTimeoutRef = useRef(null);
+  // ADD alongside the other refs
+const typingClearTimers = useRef(new Map()); 
 
   /* ── Multi-select refs ───────────────────────────────────────────────── */
   const lastSelectedIndexRef = useRef(-1);  // for Shift+click range
@@ -536,8 +541,19 @@ const { initiateCall } = useAudioCall();    // ← NEW
     if (!socket) return;
     const cid = conversation.conversationId;
 
-    const onNewMsg = (message) => {
-      if (message.conversationId !== cid) return;
+const onNewMsg = (message) => {
+  // ── Message tone ─────────────────────────────────────────────────────
+  const senderId = message.sender?._id ?? message.sender;
+  const isFromOther = senderId && String(senderId) !== String(user._id);
+  if (isFromOther) {
+    const s = readSoundSettings();
+    SoundEngine.playMessageTone(s.messages.tone, s.messages.volume);
+    if (s.messages.vibration) SoundEngine.vibrate([100]);
+  }
+  // ─────────────────────────────────────────────────────────────────────
+  if (message.conversationId !== cid) return;
+
+
       const msgId = message._id ? String(message._id) : null;
       const norm  = msgId ? { ...message, _id: msgId } : message;
       if (msgId) msgCacheRef.current[msgId] = norm;
@@ -586,16 +602,35 @@ const { initiateCall } = useAudioCall();    // ← NEW
         return { ...m, status: 'read', isRead: true };
       }));
     };
+const onTyping = ({ conversationId, userId }) => {
+  if (conversationId === cid && userId !== user._id) {
+    setTypingUsers((prev) => new Set(prev).add(userId));
+    setPresenceLabel(`${conversation.user?.username} is typing...`);
 
-    const onTyping        = ({ conversationId, userId }) => {
-      if (conversationId === cid && userId !== user._id) {
-        setTypingUsers((prev) => new Set(prev).add(userId));
-        setPresenceLabel(`${conversation.user?.username} is typing...`);
-      }
-    };
-    const onStoppedTyping = ({ conversationId, userId }) => {
-      if (conversationId === cid) setTypingUsers((prev) => { const s = new Set(prev); s.delete(userId); return s; });
-    };
+    // Auto-clear after 3.5 s if stopped-typing never arrives
+    if (typingClearTimers.current.has(userId)) {
+      clearTimeout(typingClearTimers.current.get(userId));
+    }
+    typingClearTimers.current.set(userId, setTimeout(() => {
+      setTypingUsers((prev) => { const s = new Set(prev); s.delete(userId); return s; });
+      typingClearTimers.current.delete(userId);
+    }, 3500));
+  }
+};
+
+
+
+const onStoppedTyping = ({ conversationId, userId }) => {
+  if (conversationId === cid) {
+    if (typingClearTimers.current.has(userId)) {
+      clearTimeout(typingClearTimers.current.get(userId));
+      typingClearTimers.current.delete(userId);
+    }
+    setTypingUsers((prev) => { const s = new Set(prev); s.delete(userId); return s; });
+  }
+};
+
+
     const onPresence = ({ userId, status, lastSeen: ls }) => { if (userId === conversation.user?._id && ls) setLastSeen(ls); };
 
     socket.on('new-direct-message',         onNewMsg);
@@ -628,6 +663,9 @@ const { initiateCall } = useAudioCall();    // ← NEW
       socket.off('conversation:typing');
       socket.off('presence-update-direct', onPresence);
       emit('conversation:leave', { conversationId: cid });
+      typingClearTimers.current.forEach(clearTimeout);
+      typingClearTimers.current.clear();
+    
     };
   }, [socket, conversation.conversationId, user._id, emit, buildReplyTo]);
 
@@ -911,14 +949,23 @@ const { initiateCall } = useAudioCall();    // ← NEW
     catch (_) {}
   }, []);
 
- const handleVideoCall = async () => {
-  try {
-    const roomId = Math.random().toString(36).substring(2, 15);
-    await directMessageAPI.sendMessage({ receiverId: conversation.user._id,
-      content: '📞 Video call invitation', type: 'video-call' });
-    emit('video-call-invitation', { roomId, from: user, to: conversation.user });
-    navigate(`/room/${roomId}`);
-  } catch (_) { toast.error('Failed to start video call'); }
+const handleVideoCall = () => {
+  const roomId = Math.random().toString(36).substring(2, 15);
+  // ── Save where we came from so VideoRoom can return here ─────────────
+  sessionStorage.setItem('vmeet_return_path', window.location.pathname);
+  directMessageAPI.sendMessage({
+    receiverId: conversation.user._id,
+    content: '📞 Video call invitation',
+    type: 'video-call',
+  }).catch(() => {});
+  emit('call-user', {
+    callerId:     user._id,
+    receiverId:   conversation.user._id,
+    roomId,
+    callerName:   user.username,
+    callerAvatar: user.avatar,
+  });
+  navigate(`/room/${roomId}`);
 };
 
 // ── NEW ──────────────────────────────────────────────────────────────
