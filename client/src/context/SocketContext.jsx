@@ -62,8 +62,16 @@ export const SocketProvider = ({ children }) => {
       console.log('✅ Socket connected', newSocket.id);
       setConnected(true);
 
-      // Always announce ourselves — server uses this to cancel grace period
-      newSocket.emit('user-online', user._id);
+      // setSocket FIRST so React re-renders and VideoRoom Effect 3
+      // re-registers all handlers before the server responds.
+      setSocket(newSocket);
+
+      // Delay user-online by one frame so React has committed the
+      // re-render and socket handlers are registered before the server
+      // fires user-reconnected / room-rejoin-ack back at us.
+      requestAnimationFrame(() => {
+        newSocket.emit('user-online', user._id);
+      });
     });
 
     newSocket.on('disconnect', (reason) => {
@@ -97,9 +105,7 @@ export const SocketProvider = ({ children }) => {
       );
     });
 
-    setSocket(newSocket);
-
-return () => {
+    return () => {
       clearInterval(keepAlive);
       newSocket.disconnect();
       socketRef.current = null;

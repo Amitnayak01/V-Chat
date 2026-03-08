@@ -106,12 +106,15 @@ export const handleSocketConnection = (io) => {
 
         socket.join(`user:${userId}`);
 
-        if (wasInGrace) {
+                if (wasInGrace) {
           cancelGrace(userId);
           console.log(`♻️  User ${user.username} reconnected within grace period`);
 
           socket.reconnectedRooms = new Set();
 
+          // Snapshot room membership NOW (before the setTimeout)
+          // so we use accurate data even if something changes in 500ms
+          const rejoinSnapshots = [];
           for (const [roomId, members] of activeRooms.entries()) {
             if (members.has(userId)) {
               socket.join(roomId);
@@ -120,22 +123,32 @@ export const handleSocketConnection = (io) => {
               const info = members.get(userId);
               members.set(userId, { ...info, socketId: socket.id });
 
-              const currentMemberList = Array.from(members.entries()).map(
-                ([uid, info]) => ({ userId: uid, ...info })
-              );
+              rejoinSnapshots.push({
+                roomId,
+                memberList: Array.from(members.entries()).map(
+                  ([uid, d]) => ({ userId: uid, ...d })
+                ),
+              });
+            }
+          }
+
+          // Delay 500ms — gives the reconnecting client time to finish
+          // its React re-render and re-register socket event handlers
+          // before we fire user-reconnected and room-rejoin-ack.
+          // Without this, events arrive before handlers are registered
+          // and are silently dropped, leaving both sides with black screens.
+          setTimeout(() => {
+            for (const { roomId, memberList } of rejoinSnapshots) {
               socket.to(roomId).emit('user-reconnected', {
                 userId,
                 username:     user.username,
                 avatar:       user.avatar,
                 isRejoin:     true,
-                participants: currentMemberList,
+                participants: memberList,
               });
 
-              const currentMembers = Array.from(members.entries()).map(
-                ([uid, memberInfo]) => ({ userId: uid, ...memberInfo })
-              );
-              socket.emit('room-rejoin-ack', { roomId, members: currentMembers });
-              console.log(`📡 Sent rejoin-ack for room ${roomId} (${currentMembers.length} members)`);
+              socket.emit('room-rejoin-ack', { roomId, members: memberList });
+              console.log(`📡 Sent rejoin-ack for room ${roomId} (${memberList.length} members)`);
 
               // Restore raise-hand state
               const roomHands = roomHandsRaised.get(roomId);
@@ -146,7 +159,7 @@ export const handleSocketConnection = (io) => {
                 socket.emit('hands-state-sync', { hands: snapshot });
               }
 
-              // MUTE: restore full mute state on reconnect
+              // Restore mute state
               const ms = roomMuteState.get(roomId);
               if (ms && (ms.hostId || ms.mutedByHost.size > 0)) {
                 socket.emit('mute-state-sync', {
@@ -156,7 +169,7 @@ export const handleSocketConnection = (io) => {
                 });
               }
             }
-          }
+          }, 500);
 
           socket.emit('online-users-list', { users: Array.from(userSockets.keys()) });
 
