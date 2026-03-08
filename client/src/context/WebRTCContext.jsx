@@ -195,6 +195,22 @@ pc.oniceconnectionstatechange = () => {
       });
     }
 
+    // Close any stale peer connection for this user before creating a new one.
+    // This is the refresh case: remote user rejoined, their old PC is dead.
+    const stalePc = peerConnectionsRef.current.get(userId);
+    if (stalePc) {
+      console.log('[WebRTC] createOffer: closing stale peer for', userId);
+      stalePc.ontrack                    = null;
+      stalePc.onicecandidate             = null;
+      stalePc.onconnectionstatechange    = null;
+      stalePc.oniceconnectionstatechange = null;
+      try { stalePc.close(); } catch (_) {}
+      peerConnectionsRef.current.delete(userId);
+      // Remove stale ICE candidates and remote stream for clean slate
+      pendingCandidates.current.delete(userId);
+      removeRemoteStream(userId);
+    }
+
     const pc = createPeer(userId);
     try {
       const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
@@ -206,18 +222,38 @@ pc.oniceconnectionstatechange = () => {
   }, [createPeer, emit]);
 
 const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
-    // Glare resolution: both peers tried to call each other simultaneously.
-    // The peer with the lexicographically smaller userId backs off and
-    // accepts the remote offer instead of keeping its own.
     const existingPc = peerConnectionsRef.current.get(fromUserId);
-    if (existingPc && existingPc.signalingState === 'have-local-offer') {
-      if (myUserIdRef.current < fromUserId) {
-        console.log('[WebRTC] Glare — backing off, accepting remote offer');
-        existingPc.close();
+
+    if (existingPc) {
+      const connState = existingPc.connectionState;
+      const iceState  = existingPc.iceConnectionState;
+      const isDead    = ['disconnected', 'failed', 'closed'].includes(connState)
+                     || ['disconnected', 'failed', 'closed'].includes(iceState);
+
+      if (isDead) {
+        // We are the refreshed user — our old PC reference is dead.
+        // Close it cleanly so createPeer() starts completely fresh.
+        console.log('[WebRTC] handleOffer: replacing dead peer for', fromUserId);
+        existingPc.ontrack                    = null;
+        existingPc.onicecandidate             = null;
+        existingPc.onconnectionstatechange    = null;
+        existingPc.oniceconnectionstatechange = null;
+        try { existingPc.close(); } catch (_) {}
         peerConnectionsRef.current.delete(fromUserId);
-      } else {
-        console.log('[WebRTC] Glare — keeping our offer, ignoring remote');
-        return;
+        pendingCandidates.current.delete(fromUserId);
+        removeRemoteStream(fromUserId);
+
+      } else if (existingPc.signalingState === 'have-local-offer') {
+        // Glare resolution: both peers tried to offer simultaneously.
+        // Smaller userId backs off and accepts the remote offer instead.
+        if (myUserIdRef.current < fromUserId) {
+          console.log('[WebRTC] Glare — backing off, accepting remote offer');
+          existingPc.close();
+          peerConnectionsRef.current.delete(fromUserId);
+        } else {
+          console.log('[WebRTC] Glare — keeping our offer, ignoring remote');
+          return;
+        }
       }
     }
 

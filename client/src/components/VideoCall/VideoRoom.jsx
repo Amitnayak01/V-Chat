@@ -259,17 +259,22 @@ const { user }     = useAuth();
           });
         }
       },
-      'user-joined': ({ userId, username, participants: updated }) => {
-        // Cancel the no-answer timer — someone joined
+      'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
         otherJoinedRef.current = true;
         if (noAnswerTimerRef.current) {
           clearTimeout(noAnswerTimerRef.current);
           noAnswerTimerRef.current = null;
         }
-        setParticipants(updated);
-        createOffer(userId, roomId);
-        pushEvent('user-joined', { username });
-        toast.success(`${username} joined`);
+        setParticipants(updated || []);
+
+        if (isRejoin) {
+          // Refreshed user needs ~800ms to reinitialize media + socket
+          // listeners before they can handle an incoming offer
+          console.log('[VideoRoom] user rejoined after refresh — delaying offer for', userId);
+          setTimeout(() => createOffer(userId), 800);
+        } else {
+          createOffer(userId);
+        }
       },
 
       'user-left': ({ userId }) => {

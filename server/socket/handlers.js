@@ -242,12 +242,22 @@ export const handleSocketConnection = (io) => {
         const wasReconnectNotification =
           socket.reconnectedRooms && socket.reconnectedRooms.has(roomId);
 
-        if (!isRejoin && !wasReconnectNotification) {
-          socket.to(roomId).emit('user-joined', { userId, username, avatar, participants: memberList });
-          console.log(`👥 ${username} joined room ${roomId} (${members.size} total)`);
+        if (!wasReconnectNotification) {
+          // Always emit user-joined — include isRejoin flag so the
+          // receiving peer knows to close its stale peer connection
+          // and delay the offer until the rejoining user is ready
+          socket.to(roomId).emit('user-joined', {
+            userId,
+            username,
+            avatar,
+            isRejoin,
+            participants: memberList,
+          });
+          console.log(`👥 ${username} ${isRejoin ? 're' : ''}joined room ${roomId} (${members.size} total)`);
         } else {
           console.log(`👥 ${username} rejoined room ${roomId} (reconnect=${wasReconnectNotification})`);
         }
+
 
         socket.emit('room-participants', { participants: memberList, roomId });
 
