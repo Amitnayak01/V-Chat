@@ -78,6 +78,9 @@ const VideoRoom = () => {
   // Tracks userIds for whom user-reconnected recently fired,
   // so user-joined doesn't create a duplicate offer for the same rejoin.
   const recentReconnectsRef  = useRef(new Set());
+  // Per-user lock: prevents two createOffer calls from racing when
+  // both user-joined and user-reconnected fire for the same rejoin.
+  const pendingOfferRef      = useRef(new Set());
   // 45-second no-answer timer
   const noAnswerTimerRef = useRef(null);
 
@@ -271,18 +274,22 @@ const { user }     = useAuth();
         }
         setParticipants(updated || []);
 
-        // If user-reconnected already fired for this userId within the
-        // last 2s, skip creating another offer — it was already scheduled.
-        // This prevents duplicate offers when both grace-path and join-room
-        // path fire for the same reconnecting user.
         if (recentReconnectsRef.current.has(userId)) {
           console.log('[VideoRoom] user-joined skipped — user-reconnected already handled', userId);
+          return;
+        }
+        if (pendingOfferRef.current.has(userId)) {
+          console.log('[VideoRoom] user-joined skipped — offer already pending for', userId);
           return;
         }
 
         if (isRejoin) {
           console.log('[VideoRoom] user-joined isRejoin — delaying offer for', userId);
-          setTimeout(() => createOffer(userId), 800);
+          pendingOfferRef.current.add(userId);
+          setTimeout(() => {
+            pendingOfferRef.current.delete(userId);
+            createOffer(userId);
+          }, 800);
         } else {
           createOffer(userId);
         }
@@ -348,16 +355,24 @@ const { user }     = useAuth();
 
       'user-reconnected': ({ userId, username, participants: updated }) => {
         console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
-        // Record this userId so user-joined (which may fire moments later
-        // from the join-room path) knows not to create a second offer.
+
         recentReconnectsRef.current.add(userId);
         setTimeout(() => recentReconnectsRef.current.delete(userId), 2000);
+
+        // Grab the offer lock immediately so any delayed user-joined
+        // timer already in flight sees it and aborts
+        pendingOfferRef.current.add(userId);
 
         setIsReconnecting(false);
         otherJoinedRef.current = true;
         if (updated) setParticipants(updated);
         handlePeerDisconnect(userId);
-        setTimeout(() => createOffer(userId), 800);
+
+        setTimeout(() => {
+          pendingOfferRef.current.delete(userId);
+          createOffer(userId);
+        }, 800);
+
         pushEvent('user-reconnected', { username });
         toast(`${username} reconnected`, { icon: '🔄' });
       },
