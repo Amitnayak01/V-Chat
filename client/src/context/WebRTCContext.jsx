@@ -141,10 +141,18 @@ export const WebRTCProvider = ({ children }) => {
     };
 
     // ── Connection lifecycle ──────────────────────────────────────────────
-    pc.onconnectionstatechange = () => {
+      pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       console.log(`[WebRTC] connection state with ${userId}: ${state}`);
-      if (state === 'failed' || state === 'closed') removeRemoteStream(userId);
+      if (state === 'failed' || state === 'closed') {
+        // Only remove the stream if THIS peer connection is still the
+        // active one for this userId. If a newer peer was created (e.g.
+        // after reconnect), the old closing peer must not wipe the new
+        // stream that was already published by the new peer.
+        if (peerConnectionsRef.current.get(userId) === pc) {
+          removeRemoteStream(userId);
+        }
+      }
     };
 
 pc.oniceconnectionstatechange = () => {
