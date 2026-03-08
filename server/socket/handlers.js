@@ -307,24 +307,36 @@ export const handleSocketConnection = (io) => {
     });
 
     // ── WebRTC signalling ──────────────────────────────────────────────────
-    socket.on('webrtc-offer', ({ roomId, offer, to, from }) => {
+    socket.on('webrtc-offer', ({ offer, to, from }) => {
+      if (!to) return;
       const fromId = from || socket.userId;
       const target = userSockets.get(to);
-      if (target) io.to(target).emit('webrtc-offer', { offer, from: fromId });
-      else socket.to(roomId).emit('webrtc-offer', { offer, from: fromId });
+      if (target) {
+        io.to(target).emit('webrtc-offer', { offer, from: fromId });
+      } else {
+        console.warn(`[Offer] Target socket not found for userId: ${to} — dropping`);
+      }
     });
 
-    socket.on('webrtc-answer', ({ roomId, answer, to, from }) => {
+    socket.on('webrtc-answer', ({ answer, to, from }) => {
+      if (!to) return;
       const fromId = from || socket.userId;
       const target = userSockets.get(to);
-      if (target) io.to(target).emit('webrtc-answer', { answer, from: fromId });
-      else socket.to(roomId).emit('webrtc-answer', { answer, from: fromId });
+      if (target) {
+        io.to(target).emit('webrtc-answer', { answer, from: fromId });
+      } else {
+        console.warn(`[Answer] Target socket not found for userId: ${to} — dropping`);
+      }
     });
 
-    socket.on('webrtc-ice-candidate', ({ roomId, candidate, to }) => {
+    socket.on('webrtc-ice-candidate', ({ candidate, to }) => {
+      if (!to) return;
       const target = userSockets.get(to);
-      if (target) io.to(target).emit('webrtc-ice-candidate', { candidate, from: socket.userId });
-      else socket.to(roomId).emit('webrtc-ice-candidate', { candidate, from: socket.userId });
+      if (target) {
+        io.to(target).emit('webrtc-ice-candidate', { candidate, from: socket.userId });
+      } else {
+        console.warn(`[ICE] Target socket not found for userId: ${to} — dropping candidate`);
+      }
     });
 
     // ── Room chat ──────────────────────────────────────────────────────────

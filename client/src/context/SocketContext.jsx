@@ -76,6 +76,12 @@ export const SocketProvider = ({ children }) => {
       setConnected(false);
     });
 
+    // Keep-alive ping — prevents Render free tier from dropping
+    // the socket during quiet periods between WebRTC signaling bursts
+    const keepAlive = setInterval(() => {
+      if (newSocket.connected) newSocket.emit('ping');
+    }, 20000);
+
     // ── online-users-list (sent by server after user-online) ───────────────
     newSocket.on('online-users-list', ({ users }) => {
       setOnlineUsers(users.filter(id => id !== user._id));
@@ -93,7 +99,8 @@ export const SocketProvider = ({ children }) => {
 
     setSocket(newSocket);
 
-    return () => {
+return () => {
+      clearInterval(keepAlive);
       newSocket.disconnect();
       socketRef.current = null;
     };
@@ -107,13 +114,15 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
-  const on = useCallback((event, cb) => {
-    socketRef.current?.on(event, cb);
-  }, []);
+const on = useCallback((event, cb) => {
+    if (socket) socket.on(event, cb);
+  }, [socket]);
 
   const off = useCallback((event, cb) => {
-    socketRef.current?.off(event, cb);
-  }, []);
+    if (socket) socket.off(event, cb);
+  }, [socket]);
+
+  
 
   // ── room session wrappers (expose to VideoRoom) ────────────────────────────
 
