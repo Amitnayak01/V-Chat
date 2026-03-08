@@ -74,7 +74,10 @@ const VideoRoom = () => {
   const hasJoined        = useRef(false);
   const hideTimer        = useRef(null);
   // Tracks whether the remote participant ever joined (prevents false no-answer)
-  const otherJoinedRef   = useRef(false);
+    const otherJoinedRef       = useRef(false);
+  // Tracks userIds for whom user-reconnected recently fired,
+  // so user-joined doesn't create a duplicate offer for the same rejoin.
+  const recentReconnectsRef  = useRef(new Set());
   // 45-second no-answer timer
   const noAnswerTimerRef = useRef(null);
 
@@ -268,6 +271,15 @@ const { user }     = useAuth();
         }
         setParticipants(updated || []);
 
+        // If user-reconnected already fired for this userId within the
+        // last 2s, skip creating another offer — it was already scheduled.
+        // This prevents duplicate offers when both grace-path and join-room
+        // path fire for the same reconnecting user.
+        if (recentReconnectsRef.current.has(userId)) {
+          console.log('[VideoRoom] user-joined skipped — user-reconnected already handled', userId);
+          return;
+        }
+
         if (isRejoin) {
           console.log('[VideoRoom] user-joined isRejoin — delaying offer for', userId);
           setTimeout(() => createOffer(userId), 800);
@@ -336,16 +348,15 @@ const { user }     = useAuth();
 
       'user-reconnected': ({ userId, username, participants: updated }) => {
         console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
-        // Cancel reconnecting banner
+        // Record this userId so user-joined (which may fire moments later
+        // from the join-room path) knows not to create a second offer.
+        recentReconnectsRef.current.add(userId);
+        setTimeout(() => recentReconnectsRef.current.delete(userId), 2000);
+
         setIsReconnecting(false);
-        // Mark other as joined so auto-close effect doesn't fire
         otherJoinedRef.current = true;
-        // Update participant list if server sent it
         if (updated) setParticipants(updated);
-        // Close stale peer cleanly before creating fresh one
         handlePeerDisconnect(userId);
-        // Delay 800ms — reconnecting user needs time to reinitialize
-        // camera/mic and register socket listeners after page load
         setTimeout(() => createOffer(userId), 800);
         pushEvent('user-reconnected', { username });
         toast(`${username} reconnected`, { icon: '🔄' });

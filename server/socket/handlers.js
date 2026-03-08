@@ -175,7 +175,7 @@ export const handleSocketConnection = (io) => {
 
           setTimeout(() => {
             if (socket.reconnectedRooms) socket.reconnectedRooms.clear();
-          }, 1000);
+          }, 3000);
 
         } else {
           socket.emit('online-users-list', { users: Array.from(userSockets.keys()) });
