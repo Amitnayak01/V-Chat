@@ -447,7 +447,7 @@ const Dashboard = () => {
       setIncomingCall(data);
       setIncomingCallCount((c) => c + 1);
     });
-    socket.on('call-accepted', ({ roomId }) => navigate(`/room/${roomId}`, { replace: true }));
+    socket.on('call-accepted', ({ roomId }) => navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } }));
 socket.on('call-rejected', () => {
   toast.error('Call was declined', { icon: '📵' });
 });

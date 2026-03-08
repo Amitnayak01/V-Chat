@@ -358,7 +358,7 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     removeRemoteStream(userId);
   }, [removeRemoteStream]);
 
-  const cleanup = useCallback(() => {
+const cleanup = useCallback(() => {
     peerConnectionsRef.current.forEach(pc => {
       pc.ontrack                    = null;
       pc.onicecandidate             = null;
@@ -372,6 +372,9 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
+
+    // Reset userId so next call starts fresh
+    myUserIdRef.current = null;
 
     setLocalStream(null);
     setRemoteStreamsObj({});

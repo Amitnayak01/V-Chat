@@ -167,14 +167,20 @@ const { user }     = useAuth();
     participantsRef.current = participants;
   }, [participants]);
 
-  // ── Effect 1: Init media ──────────────────────────────────────────────────
+// ── Effect 1: Init media ──────────────────────────────────────────────────
   useEffect(() => {
+    // Always call cleanup first so any stale stream/peer state
+    // from a previous call is fully wiped before we re-init.
+    // This is the key fix for "works first time only" — the
+    // WebRTCProvider never unmounts between calls so we must
+    // manually reset it at the START of every new room mount.
+    cleanup();
+
     initializeMedia(user._id).then(result => {
       if (!result.success) toast.error('Could not access camera / microphone');
     });
 
     return () => {
-      // Clear no-answer timer on unmount
       if (noAnswerTimerRef.current) {
         clearTimeout(noAnswerTimerRef.current);
         noAnswerTimerRef.current = null;
@@ -187,10 +193,12 @@ const { user }     = useAuth();
         screenStreamRef.current.getTracks().forEach(t => t.stop());
         screenStreamRef.current = null;
       }
+      hasJoined.current = false;
+      otherJoinedRef.current = false;
       cleanup();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+ 
   // ── Effect 2: Join room (once media + socket are ready) ───────────────────
   useEffect(() => {
     if (!connected || !localStream || hasJoined.current) return;
