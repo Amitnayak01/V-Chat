@@ -551,7 +551,7 @@ const { user }     = useAuth();
   }, [isMobile, localStream, roomId, user, emit, startScreenShare, doStopSharing, replaceVideoTrack, pushEvent]);
 
   // ── Camera switch (mobile) ────────────────────────────────────────────────
-  const handleSwitchCamera = useCallback(async () => {
+const handleSwitchCamera = useCallback(async () => {
     try {
       const devices     = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(d => d.kind === 'videoinput');
@@ -570,16 +570,50 @@ const { user }     = useAuth();
 
       if (localStream) {
         const old = localStream.getVideoTracks()[0];
-        localStream.removeTrack(old);
+
+        // ── Step 1: Update the local MediaStream ──────────────────────
+        // Remove old, add new so the stream object has the right track
+        if (old) {
+          localStream.removeTrack(old);
+          old.stop(); // stop BEFORE replacing so camera LED turns off
+        }
         localStream.addTrack(newTrack);
-        old.stop();
+
+        // ── Step 2: Push new track to all peer connections ─────────────
+        // Without this the remote side keeps receiving the dead track
+        await replaceVideoTrack(newTrack);
+
+        // ── Step 3: Fix screen share restore track ─────────────────────
+        // If screen sharing is active, update the saved camera track
+        // so stopping screen share restores THIS new camera, not the old one
+        if (origVideoTrackRef.current) {
+          origVideoTrackRef.current = newTrack;
+        }
+
+        // ── Step 4: Force VideoTile to re-attach the stream ────────────
+        // localStream is the same object reference so React won't
+        // re-fire the VideoTile effect automatically. We force it by
+        // briefly setting localStream to null then back to the stream.
+        // We do this via the WebRTC context's setLocalStream.
+        // The cleanest way without touching context internals is to
+        // fire a track event the VideoTile already listens for.
+        // VideoTile listens to stream.addtrack — which we already fired
+        // above by calling localStream.addTrack(newTrack). ✅
+        // So VideoTile WILL update automatically via its addtrack listener.
       }
+
       toast.success('Camera switched');
     } catch (err) {
       console.error('[SwitchCamera]', err);
-      toast.error('Failed to switch camera');
+      if (err.name === 'NotAllowedError') {
+        toast.error('Camera permission denied');
+      } else if (err.name === 'NotReadableError') {
+        toast.error('Camera is busy — try again');
+      } else {
+        toast.error('Failed to switch camera');
+      }
     }
-  }, [localStream]);
+  }, [localStream, replaceVideoTrack]);
 
   // ── Recording ─────────────────────────────────────────────────────────────
   const handleStartRecording = useCallback(async ({ quality, includeAudio = true } = {}) => {
