@@ -215,9 +215,19 @@ pc.oniceconnectionstatechange = () => {
     }
 
     // Close any stale peer connection for this user before creating a new one.
-    // This is the refresh case: remote user rejoined, their old PC is dead.
+    // Skip if the existing peer is healthy — closing a working connection
+    // would destroy a call that just successfully reconnected.
     const stalePc = peerConnectionsRef.current.get(userId);
     if (stalePc) {
+      const cs = stalePc.connectionState;
+      const is = stalePc.iceConnectionState;
+      const isHealthy = cs === 'connected' || cs === 'completed'
+                     || is === 'connected' || is === 'completed';
+      if (isHealthy) {
+        console.log('[WebRTC] createOffer: existing peer is healthy, skipping close for', userId);
+        offerInProgressRef.current.delete(userId);
+        return;
+      }
       console.log('[WebRTC] createOffer: closing stale peer for', userId);
       stalePc.ontrack                    = null;
       stalePc.onicecandidate             = null;
@@ -225,10 +235,11 @@ pc.oniceconnectionstatechange = () => {
       stalePc.oniceconnectionstatechange = null;
       try { stalePc.close(); } catch (_) {}
       peerConnectionsRef.current.delete(userId);
-      // Remove stale ICE candidates and remote stream for clean slate
       pendingCandidates.current.delete(userId);
       removeRemoteStream(userId);
     }
+
+  
 
     const pc = createPeer(userId);
     try {

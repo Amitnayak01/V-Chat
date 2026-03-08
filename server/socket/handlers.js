@@ -90,6 +90,12 @@ export const handleSocketConnection = (io) => {
     // ── user-online ────────────────────────────────────────────────────────
     socket.on('user-online', async (userId) => {
       try {
+        // Debounce: ignore duplicate user-online from same socket
+        // (can happen if client fires it twice during reconnect)
+        if (socket._processingUserOnline) return;
+        socket._processingUserOnline = true;
+        setTimeout(() => { socket._processingUserOnline = false; }, 2000);
+
         const user = await User.findById(userId);
         if (!user) return;
 
