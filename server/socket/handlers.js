@@ -120,10 +120,15 @@ export const handleSocketConnection = (io) => {
               const info = members.get(userId);
               members.set(userId, { ...info, socketId: socket.id });
 
+              const currentMemberList = Array.from(members.entries()).map(
+                ([uid, info]) => ({ userId: uid, ...info })
+              );
               socket.to(roomId).emit('user-reconnected', {
                 userId,
-                username: user.username,
-                avatar:   user.avatar,
+                username:     user.username,
+                avatar:       user.avatar,
+                isRejoin:     true,
+                participants: currentMemberList,
               });
 
               const currentMembers = Array.from(members.entries()).map(
@@ -243,9 +248,6 @@ export const handleSocketConnection = (io) => {
           socket.reconnectedRooms && socket.reconnectedRooms.has(roomId);
 
         if (!wasReconnectNotification) {
-          // Always emit user-joined — include isRejoin flag so the
-          // receiving peer knows to close its stale peer connection
-          // and delay the offer until the rejoining user is ready
           socket.to(roomId).emit('user-joined', {
             userId,
             username,

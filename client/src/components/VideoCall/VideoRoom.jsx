@@ -259,7 +259,8 @@ const { user }     = useAuth();
           });
         }
       },
-      'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
+  
+'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
         otherJoinedRef.current = true;
         if (noAnswerTimerRef.current) {
           clearTimeout(noAnswerTimerRef.current);
@@ -268,14 +269,15 @@ const { user }     = useAuth();
         setParticipants(updated || []);
 
         if (isRejoin) {
-          // Refreshed user needs ~800ms to reinitialize media + socket
-          // listeners before they can handle an incoming offer
-          console.log('[VideoRoom] user rejoined after refresh — delaying offer for', userId);
+          console.log('[VideoRoom] user-joined isRejoin — delaying offer for', userId);
           setTimeout(() => createOffer(userId), 800);
         } else {
           createOffer(userId);
         }
       },
+
+
+
 
       'user-left': ({ userId }) => {
         const leaving = participantsRef.current.find(p => (p.userId ?? p) === userId);
@@ -332,13 +334,23 @@ const { user }     = useAuth();
         }
       },
 
-      'user-reconnected': ({ userId, username }) => {
+      'user-reconnected': ({ userId, username, participants: updated }) => {
+        console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
+        // Cancel reconnecting banner
         setIsReconnecting(false);
+        // Mark other as joined so auto-close effect doesn't fire
+        otherJoinedRef.current = true;
+        // Update participant list if server sent it
+        if (updated) setParticipants(updated);
+        // Close stale peer cleanly before creating fresh one
         handlePeerDisconnect(userId);
-        createOffer(userId, roomId);
+        // Delay 800ms — reconnecting user needs time to reinitialize
+        // camera/mic and register socket listeners after page load
+        setTimeout(() => createOffer(userId), 800);
         pushEvent('user-reconnected', { username });
         toast(`${username} reconnected`, { icon: '🔄' });
       },
+
 
       'room-rejoin-ack': ({ roomId: ack, members }) => {
         if (ack !== roomId) return;
