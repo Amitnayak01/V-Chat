@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { useNavigate } from 'react-router-dom';
+import IncomingCall from '../components/Dashboard/IncomingCall';
 
 const SocketContext = createContext(null);
 
@@ -11,7 +13,7 @@ export const useSocket = () => {
 };
 
 const SOCKET_URL  = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
-const SESSION_KEY = 'vmeet_current_room'; // sessionStorage key
+const SESSION_KEY = 'vmeet_current_room';
 
 // ─── Room session helpers (survive page refresh, cleared on tab close) ────────
 
@@ -35,22 +37,22 @@ export const clearRoomSession = () => {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export const SocketProvider = ({ children }) => {
-  const [socket,      setSocket]      = useState(null);
-  const [connected,   setConnected]   = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [socket,       setSocket]       = useState(null);
+  const [connected,    setConnected]    = useState(false);
+  const [onlineUsers,  setOnlineUsers]  = useState([]);
+  const [incomingCall, setIncomingCall] = useState(null);
 
   const { user, isAuthenticated } = useAuth();
-
-  // Keep a stable ref so callbacks always see the latest socket
+  const navigate  = useNavigate();
   const socketRef = useRef(null);
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
     const newSocket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
+      transports:           ['websocket', 'polling'],
       reconnection:         true,
-      reconnectionAttempts: Infinity,   // keep trying — don't give up on slow networks
+      reconnectionAttempts: Infinity,
       reconnectionDelay:    500,
       reconnectionDelayMax: 3000,
     });
@@ -84,20 +86,28 @@ export const SocketProvider = ({ children }) => {
       setConnected(false);
     });
 
-    // Keep-alive ping — prevents Render free tier from dropping
-    // the socket during quiet periods between WebRTC signaling bursts
+    // Keep-alive ping — prevents Render free tier from dropping idle sockets
     const keepAlive = setInterval(() => {
       if (newSocket.connected) newSocket.emit('ping');
     }, 20000);
 
-    // ── online-users-list (sent by server after user-online) ───────────────
+    // ── online-users-list ──────────────────────────────────────────────────
     newSocket.on('online-users-list', ({ users }) => {
       setOnlineUsers(users.filter(id => id !== user._id));
     });
 
+    // ── Global incoming call — lives here so it works on ANY page ──────────
+    newSocket.on('incoming-call', (data) => {
+      setIncomingCall(data);
+    });
+
+    newSocket.on('call-cancelled', ({ callerId }) => {
+      setIncomingCall(prev => prev?.callerId === callerId ? null : prev);
+    });
+
     // ── individual status changes ──────────────────────────────────────────
     newSocket.on('user-status-change', ({ userId, status }) => {
-      if (userId === user._id) return; // ignore self
+      if (userId === user._id) return;
       setOnlineUsers(prev =>
         status === 'online'
           ? prev.includes(userId) ? prev : [...prev, userId]
@@ -120,17 +130,15 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
-const on = useCallback((event, cb) => {
-    if (socket) socket.on(event, cb);
-  }, [socket]);
+  const on = useCallback((event, cb) => {
+    if (socketRef.current) socketRef.current.on(event, cb);
+  }, []);
 
   const off = useCallback((event, cb) => {
-    if (socket) socket.off(event, cb);
-  }, [socket]);
+    if (socketRef.current) socketRef.current.off(event, cb);
+  }, []);
 
-  
-
-  // ── room session wrappers (expose to VideoRoom) ────────────────────────────
+  // ── room session wrappers ──────────────────────────────────────────────────
 
   const setCurrentRoom = useCallback((roomId, username, avatar) => {
     if (user) saveRoomSession(roomId, user._id, username, avatar);
@@ -140,18 +148,51 @@ const on = useCallback((event, cb) => {
     clearRoomSession();
   }, []);
 
+  // ── Global incoming call accept / reject ───────────────────────────────────
+
+  const handleAcceptCall = useCallback(() => {
+    if (!incomingCall || !user) return;
+    emit('accept-call', {
+      callerId: incomingCall.callerId,
+      roomId:   incomingCall.roomId,
+      userId:   user._id,
+    });
+    navigate(`/room/${incomingCall.roomId}`, {
+      replace: true,
+      state:   { returnTo: window.location.pathname },
+    });
+    setIncomingCall(null);
+  }, [incomingCall, emit, navigate, user]);
+
+  const handleRejectCall = useCallback(() => {
+    if (!incomingCall || !user) return;
+    emit('reject-call', { callerId: incomingCall.callerId, userId: user._id });
+    setIncomingCall(null);
+  }, [incomingCall, emit, user]);
+
   return (
-    <SocketContext.Provider value={{
-      socket,
-      connected,
-      onlineUsers,
-      emit,
-      on,
-      off,
-      setCurrentRoom,
-      clearCurrentRoom,
-    }}>
-      {children}
-    </SocketContext.Provider>
+    <>
+      {incomingCall && (
+        <IncomingCall
+          caller={incomingCall}
+          onAccept={handleAcceptCall}
+          onReject={handleRejectCall}
+        />
+      )}
+      <SocketContext.Provider value={{
+        socket,
+        connected,
+        onlineUsers,
+        emit,
+        on,
+        off,
+        setCurrentRoom,
+        clearCurrentRoom,
+        incomingCall,
+        setIncomingCall,
+      }}>
+        {children}
+      </SocketContext.Provider>
+    </>
   );
 };

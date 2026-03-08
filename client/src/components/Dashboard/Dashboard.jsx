@@ -1,11 +1,10 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Video, Link as LinkIcon, Search, Plus, Users,
   Share2, Clock, Zap, Calendar, ArrowRight,
   CheckCheck, Sparkles,
-  Home, MessageCircle, History, Settings as SettingsIcon,
+  Home, MessageCircle, Settings as SettingsIcon,
   Phone,
 } from 'lucide-react';
 
@@ -13,19 +12,18 @@ import Navbar         from '../Common/Navbar';
 import Sidebar        from './Sidebar';
 import UserList       from './UserList';
 import ContactsList   from './ContactsList';
-import IncomingCall   from './IncomingCall';
-import OutgoingCall from './OutgoingCall';
+import OutgoingCall   from './OutgoingCall';
 import MeetingHistory from './MeetingHistory';
 import CallHistory    from './CallHistory';
 import Chat           from './Chat';
 import Profile        from './Profile';
 import Settings       from './Settings';
 
-import { useAuth }            from '../../context/AuthContext';
-import { useSocket }          from '../../context/SocketContext';
-import { generateRoomId }     from '../../utils/webrtc';
-import { directMessageAPI }   from '../../utils/api';   // ← for unread count
-import toast                  from 'react-hot-toast';
+import { useAuth }          from '../../context/AuthContext';
+import { useSocket }        from '../../context/SocketContext';
+import { generateRoomId }   from '../../utils/webrtc';
+import { directMessageAPI } from '../../utils/api';
+import toast                from 'react-hot-toast';
 
 /* ─────────────────────────────────────────────
    URL ↔ view mapping
@@ -104,7 +102,6 @@ const MobileBottomNav = ({ activeView, onNavigate, unreadChats, user }) => (
                 )}
               </div>
 
-              {/* ── Teal unread badge on Chats icon ── */}
               {showBadge && (
                 <span
                   style={{
@@ -203,7 +200,6 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
 
-      {/* Header */}
       <div className="mb-6 sm:mb-7">
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
@@ -215,7 +211,6 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
         <p className="text-xs sm:text-sm text-slate-500 mt-1">Start a meeting or join an existing one.</p>
       </div>
 
-      {/* Action Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5 mb-4 sm:mb-5">
 
         {/* New Meeting */}
@@ -272,7 +267,6 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
         </div>
       </div>
 
-      {/* Quick Actions */}
       <div className="flex flex-wrap gap-2 sm:gap-2.5 mb-6 sm:mb-7">
         <button
           onClick={handleCopyWithFeedback}
@@ -294,7 +288,6 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
         </button>
       </div>
 
-      {/* Recent Rooms */}
       {recentRooms.length > 0 && (
         <div className="mb-5 sm:mb-6 p-3.5 sm:p-4 rounded-2xl bg-amber-50 border border-amber-100">
           <div className="flex items-center justify-between mb-2.5">
@@ -319,7 +312,6 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
         </div>
       )}
 
-      {/* People Section */}
       <div className="flex items-center gap-3 mb-4 sm:mb-5">
         <div className="flex-1 h-px bg-slate-200" />
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-full px-3 py-1 shadow-sm">
@@ -341,7 +333,7 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
       </div>
 
       <h3 className="text-base sm:text-lg font-black text-slate-900 mb-3">Users</h3>
-      <p> Message the user you want to add to your contact list.</p>
+      <p>Message the user you want to add to your contact list.</p>
       <UserList onCallUser={onCallUser} searchQuery={searchQuery} />
     </div>
   );
@@ -370,32 +362,22 @@ const Dashboard = () => {
   const { socket, emit } = useSocket();
 
   const activeView = pathToView(location.pathname);
-const [outgoingCall, setOutgoingCall] = useState(null);
-const outgoingCallTimerRef = useRef(null);
-// { receiverId, receiverName, receiverAvatar, roomId }
-  const [incomingCall,     setIncomingCall]     = useState(null);
+
+  const [outgoingCall,     setOutgoingCall]     = useState(null);
+  const outgoingCallTimerRef                    = useRef(null);
   const [chatRedirectData, setChatRedirectData] = useState(null);
   const [chatOpen,         setChatOpen]         = useState(false);
+  const [unreadChats,      setUnreadChats]      = useState(0);
 
-  /* ── Unread chat count (bell + sidebar + bottom nav) ─────────────────
-   *
-   *  Two parts:
-   *  1. incomingCallCount — existing video-call notification logic, unchanged
-   *  2. unreadChats       — sum of unreadCount across all DM conversations,
-   *                         fetched from API + kept live via socket events
-   * ─────────────────────────────────────────────────────────────────── */
-  const [incomingCallCount, setIncomingCallCount] = useState(0);
-  const [unreadChats,       setUnreadChats]       = useState(0);
+  // incomingCallCount kept for Navbar bell badge — incremented by SocketContext
+  const [incomingCallCount] = useState(0);
+  const totalNotifications  = unreadChats + incomingCallCount;
 
-  // Total passed to Navbar bell = unread DMs + pending call alerts
-  const totalNotifications = unreadChats + incomingCallCount;
-
-  /* Fetch unread count from conversations list */
+  /* ── Unread DM count ─────────────────────────────────────────────── */
   const refreshUnread = useCallback(async () => {
     try {
       const res = await directMessageAPI.getConversations();
       if (res.data?.success) {
-        // Count conversations (users) with at least 1 unread message — not total messages
         const total = (res.data.conversations || []).filter(
           (c) => (Number(c.unreadCount) || 0) > 0
         ).length;
@@ -404,19 +386,16 @@ const outgoingCallTimerRef = useRef(null);
     } catch (_) {}
   }, []);
 
-  /* Initial load */
   useEffect(() => { refreshUnread(); }, [refreshUnread]);
 
-  /* Zero out unread when the user navigates into Chats */
   useEffect(() => {
     if (activeView === 'chats') {
-      // Re-fetch after a short delay to let the read receipt propagate
       const t = setTimeout(refreshUnread, 800);
       return () => clearTimeout(t);
     }
   }, [activeView, refreshUnread]);
 
-  /* chat redirect via location.state */
+  /* ── Location state redirects ────────────────────────────────────── */
   useEffect(() => {
     if (location.state?.openChat) {
       setChatRedirectData({
@@ -427,26 +406,12 @@ const outgoingCallTimerRef = useRef(null);
     }
   }, [location.state, navigate]);
 
-
-/* chat redirect via location.state */
-  useEffect(() => {
-    if (location.state?.openChat) {
-      setChatRedirectData({
-        conversationId: location.state.conversationId,
-        targetUser:     location.state.targetUser,
-      });
-      navigate('/dashboard/chats', { replace: true, state: {} });
-    }
-  }, [location.state, navigate]);
-
-  /* profile redirect via location.state */
   useEffect(() => {
     if (location.state?.openProfile) {
       navigate('/dashboard/profile', { replace: true, state: {} });
     }
   }, [location.state, navigate]);
 
-  /* outgoing call initiated from UserProfilePage */
   useEffect(() => {
     if (location.state?.outgoingCall) {
       const oc = location.state.outgoingCall;
@@ -455,15 +420,6 @@ const outgoingCallTimerRef = useRef(null);
     }
   }, [location.state, navigate]);
 
-
-  /* profile redirect via location.state */
-  useEffect(() => {
-    if (location.state?.openProfile) {
-      navigate('/dashboard/profile', { replace: true, state: {} });
-    }
-  }, [location.state, navigate]);
-
-  /* reset chat state when leaving the chats route */
   useEffect(() => {
     if (activeView !== 'chats') {
       setChatRedirectData(null);
@@ -475,13 +431,9 @@ const outgoingCallTimerRef = useRef(null);
   useEffect(() => {
     if (!socket) return;
 
-    /* Video call notifications — unchanged */
-    socket.on('incoming-call', (data) => {
-      setIncomingCall(data);
-      setIncomingCallCount((c) => c + 1);
-    });
-socket.on('call-accepted', ({ roomId }) => {
-      // Clear auto-cancel timer — call was answered
+    // incoming-call handled globally in SocketContext
+
+    socket.on('call-accepted', ({ roomId }) => {
       if (outgoingCallTimerRef.current) {
         clearTimeout(outgoingCallTimerRef.current);
         outgoingCallTimerRef.current = null;
@@ -489,10 +441,9 @@ socket.on('call-accepted', ({ roomId }) => {
       setOutgoingCall(null);
       sessionStorage.removeItem('vmeet_calling');
       navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } });
-    });   
+    });
 
     socket.on('call-rejected', () => {
-      // Clear auto-cancel timer — call was declined
       if (outgoingCallTimerRef.current) {
         clearTimeout(outgoingCallTimerRef.current);
         outgoingCallTimerRef.current = null;
@@ -507,42 +458,35 @@ socket.on('call-accepted', ({ roomId }) => {
       sessionStorage.removeItem('vmeet_calling');
       toast.error(message);
     });
-     
-    socket.on('call-cancelled', ({ callerId }) => {
-      // Caller hung up before we answered — dismiss the incoming call UI
-      setIncomingCall(prev => {
-        if (prev && prev.callerId === callerId) return null;
-        return prev;
-      });
-      setIncomingCallCount(c => Math.max(0, c - 1));
+
+    socket.on('call-cancelled', () => {
       toast('Caller cancelled the call', { icon: '📵', duration: 3000 });
     });
- 
-    socket.on('call-failed',   ({ message }) => toast.error(message));
-    socket.on('user-online',   ({ username }) =>
+
+    socket.on('user-online', ({ username }) =>
       toast.success(`${username} is now online`, { icon: '🟢', duration: 2000 })
     );
 
-    /* DM unread count — re-fetch on any relevant socket event */
-    const handleNewMsg   = () => refreshUnread();
-    const handleReadEvt  = () => refreshUnread();
+    const handleNewMsg  = () => refreshUnread();
+    const handleReadEvt = () => refreshUnread();
 
     socket.on('new-direct-message',       handleNewMsg);
     socket.on('message:read',             handleReadEvt);
     socket.on('batch-read-update-direct', handleReadEvt);
 
     return () => {
-      socket.off('incoming-call');
       socket.off('call-accepted');
       socket.off('call-rejected');
       socket.off('call-failed');
+      socket.off('call-cancelled');
       socket.off('user-online');
       socket.off('new-direct-message',       handleNewMsg);
       socket.off('message:read',             handleReadEvt);
       socket.off('batch-read-update-direct', handleReadEvt);
     };
-  }, [socket, navigate, refreshUnread]);
+  }, [socket, navigate, refreshUnread]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Room helpers ────────────────────────────────────────────────── */
   const saveRecentRoom = useCallback((roomId) => {
     try {
       const prev    = JSON.parse(localStorage.getItem('vmeet_recent_rooms') || '[]');
@@ -551,16 +495,16 @@ socket.on('call-accepted', ({ roomId }) => {
     } catch {}
   }, []);
 
-const handleStartMeeting = () => {
-  const id = generateRoomId();
-  saveRecentRoom(id);
-  navigate(`/room/${id}`, { replace: true, state: { returnTo: location.pathname } });
-};
+  const handleStartMeeting = () => {
+    const id = generateRoomId();
+    saveRecentRoom(id);
+    navigate(`/room/${id}`, { replace: true, state: { returnTo: location.pathname } });
+  };
 
-const handleJoinMeeting = (code) => {
-  saveRecentRoom(code);
-  navigate(`/room/${code}`, { replace: true, state: { returnTo: location.pathname } });
-};
+  const handleJoinMeeting = (code) => {
+    saveRecentRoom(code);
+    navigate(`/room/${code}`, { replace: true, state: { returnTo: location.pathname } });
+  };
 
   const handleCopyLink = () => {
     const id   = generateRoomId();
@@ -568,78 +512,49 @@ const handleJoinMeeting = (code) => {
     navigator.clipboard.writeText(link);
     toast.success('Meeting link copied!');
   };
-const handleCallUser = (targetUser, roomId) => {
-  emit('call-user', {
-    callerId:     user._id,
-    receiverId:   targetUser._id,
-    roomId,
-    callerName:   user.username,
-    callerAvatar: user.avatar,
-  });
 
-  // Store for cancel-call emission if caller cancels
-  sessionStorage.setItem('vmeet_calling', JSON.stringify({
-    receiverId: targetUser._id,
-    roomId,
-  }));
-
-  // Show outgoing call popup — do NOT navigate yet
-  setOutgoingCall({
-    receiverId:    targetUser._id,
-    receiverName:  targetUser.username,
-    receiverAvatar: targetUser.avatar,
-    roomId,
-  });
-};
-
-const handleAcceptCall = () => {
-  if (!incomingCall) return;
-  emit('accept-call', {
-    callerId: incomingCall.callerId,
-    roomId:   incomingCall.roomId,
-    userId:   user._id,
-  });
-  navigate(`/room/${incomingCall.roomId}`, { replace: true, state: { returnTo: location.pathname } });
-  setIncomingCall(null);
-  setIncomingCallCount((c) => Math.max(0, c - 1));
-};
-
-  const handleRejectCall = () => {
-    if (!incomingCall) return;
-    emit('reject-call', { callerId: incomingCall.callerId, userId: user._id });
-    setIncomingCall(null);
-    setIncomingCallCount((c) => Math.max(0, c - 1));
+  /* ── Call user ───────────────────────────────────────────────────── */
+  const handleCallUser = (targetUser, roomId) => {
+    emit('call-user', {
+      callerId:     user._id,
+      receiverId:   targetUser._id,
+      roomId,
+      callerName:   user.username,
+      callerAvatar: user.avatar,
+    });
+    sessionStorage.setItem('vmeet_calling', JSON.stringify({
+      receiverId: targetUser._id,
+      roomId,
+    }));
+    setOutgoingCall({
+      receiverId:     targetUser._id,
+      receiverName:   targetUser.username,
+      receiverAvatar: targetUser.avatar,
+      roomId,
+    });
   };
 
-const handleCancelOutgoing = useCallback(() => {
-    // Clear auto-cancel timer if running
+  /* ── Cancel outgoing call ────────────────────────────────────────── */
+  const handleCancelOutgoing = useCallback(() => {
     if (outgoingCallTimerRef.current) {
       clearTimeout(outgoingCallTimerRef.current);
       outgoingCallTimerRef.current = null;
     }
     setOutgoingCall(prev => {
       if (!prev) return null;
-      // Notify receiver so their ringing stops
-      emit('cancel-call', {
-        receiverId: prev.receiverId,
-        callerId:   user._id,
-      });
+      emit('cancel-call', { receiverId: prev.receiverId, callerId: user._id });
       return null;
     });
     sessionStorage.removeItem('vmeet_calling');
   }, [emit, user._id]);
 
-  // Auto-cancel outgoing call after 30 seconds if no answer
+  /* ── Auto-cancel outgoing after 30s ─────────────────────────────── */
   useEffect(() => {
     if (!outgoingCall) return;
-
-    // Start 30s timer
     outgoingCallTimerRef.current = setTimeout(() => {
       toast('No answer', { icon: '⏱️', duration: 3000 });
       handleCancelOutgoing();
     }, 30000);
-
-    // Cleanup: clear timer if call is answered/rejected/cancelled
     return () => {
       if (outgoingCallTimerRef.current) {
         clearTimeout(outgoingCallTimerRef.current);
@@ -648,11 +563,8 @@ const handleCancelOutgoing = useCallback(() => {
     };
   }, [outgoingCall, handleCancelOutgoing]);
 
-  const handleNavigate = (view) => {
-    navigate(VIEW_TO_PATH[view] || '/dashboard');
-  };
+  const handleNavigate = (view) => navigate(VIEW_TO_PATH[view] || '/dashboard');
 
-  // Bottom nav visible everywhere EXCEPT when a chat window is open on mobile
   const showBottomNav = !(activeView === 'chats' && chatOpen);
 
   const renderView = () => {
@@ -669,12 +581,7 @@ const handleCancelOutgoing = useCallback(() => {
           />
         );
       case 'chats':
-        return (
-          <Chat
-            initialConversation={chatRedirectData}
-            onChatOpen={setChatOpen}
-          />
-        );
+        return <Chat initialConversation={chatRedirectData} onChatOpen={setChatOpen} />;
       case 'meeting-history':
         return <MeetingHistory />;
       case 'call-history':
@@ -692,7 +599,6 @@ const handleCancelOutgoing = useCallback(() => {
 
   return (
     <div className="min-h-screen bg-slate-50 overflow-x-hidden">
-      {/* Bell badge = real unread DMs + any pending call alerts */}
       <Navbar
         onNavigateToProfile={() => handleNavigate('profile')}
         notificationCount={totalNotifications}
@@ -700,39 +606,29 @@ const handleCancelOutgoing = useCallback(() => {
       />
 
       <div className="flex h-[calc(100vh-57px)]">
-
-        {/* Desktop Sidebar */}
         <div className="hidden md:flex w-64 border-r border-slate-200 flex-col h-full bg-white flex-shrink-0">
           <Sidebar
             activeView={activeView}
             onNavigate={handleNavigate}
-            notificationCount={unreadChats}   /* sidebar only shows DM unreads */
+            notificationCount={unreadChats}
           />
         </div>
 
-        {/* Main content */}
         <div className={`flex-1 overflow-y-auto md:pb-0 ${showBottomNav ? 'pb-20' : 'pb-0'}`}>
           {renderView()}
         </div>
       </div>
 
-      {/* Mobile Bottom Nav */}
       {showBottomNav && (
         <MobileBottomNav
           activeView={activeView}
           onNavigate={handleNavigate}
-          unreadChats={unreadChats}   /* teal badge on Chats tab */
+          unreadChats={unreadChats}
           user={user}
         />
       )}
 
-      {incomingCall && (
-        <IncomingCall
-          caller={incomingCall}
-          onAccept={handleAcceptCall}
-          onReject={handleRejectCall}
-        />
-      )}
+      {/* IncomingCall is rendered globally inside SocketContext — not here */}
 
       {outgoingCall && (
         <OutgoingCall
@@ -743,7 +639,6 @@ const handleCancelOutgoing = useCallback(() => {
           onCancel={handleCancelOutgoing}
         />
       )}
-
     </div>
   );
 };
