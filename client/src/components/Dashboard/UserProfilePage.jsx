@@ -126,8 +126,7 @@ const UserProfilePage = () => {
   const [voiceCalling, setVoiceCalling] = useState(false);   // NEW
   const [refreshing,   setRefreshing]   = useState(false);
 
-  const callTimerRef      = useRef(null);
-  const voiceCallTimerRef = useRef(null);   // NEW
+  const voiceCallTimerRef = useRef(null);
 
   const isOwnProfile = profile?._id === currentUser?._id;
 
@@ -142,7 +141,6 @@ const UserProfilePage = () => {
   /* ── Cleanup timers on unmount ───────────────────────────────────── */
   useEffect(() => {
     return () => {
-      if (callTimerRef.current)      clearTimeout(callTimerRef.current);
       if (voiceCallTimerRef.current) clearTimeout(voiceCallTimerRef.current);
     };
   }, []);
@@ -230,11 +228,13 @@ const UserProfilePage = () => {
     }
   };
 
-  /* ── Video call handler — unchanged ─────────────────────────────── */
+  /* ── Video call handler ──────────────────────────────────────────── */
   const handleCall = () => {
     if (calling) return;
     if (!socket?.connected) { toast.error('Not connected to server. Please wait…'); return; }
+
     const roomId = generateRoomId();
+
     emit('call-user', {
       callerId:     currentUser._id,
       receiverId:   profile._id,
@@ -242,10 +242,28 @@ const UserProfilePage = () => {
       callerName:   currentUser.username,
       callerAvatar: currentUser.avatar,
     });
-    toast.success(`Calling ${profile.username}…`, { duration: 5000 });
+
+    // Store receiver info so VideoRoom can cancel if caller leaves early
+    sessionStorage.setItem('vmeet_calling', JSON.stringify({
+      receiverId: profile._id,
+      roomId,
+    }));
+
     setCalling(true);
-    // Navigate caller to room after 1 s; receiver gets incoming-call popup
-    callTimerRef.current = setTimeout(() => navigate(`/room/${roomId}`), 1000);
+
+    // Navigate to dashboard with outgoing call state
+    // Dashboard reads this state and shows the OutgoingCall popup
+    // The popup waits for call-accepted or call-rejected before entering room
+    navigate('/dashboard', {
+      state: {
+        outgoingCall: {
+          receiverId:     profile._id,
+          receiverName:   profile.username,
+          receiverAvatar: profile.avatar,
+          roomId,
+        },
+      },
+    });
   };
 
   /* ── Voice / audio call handler — uses AudioCallContext ─────────── */

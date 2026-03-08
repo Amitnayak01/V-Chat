@@ -13,6 +13,7 @@ import Sidebar        from './Sidebar';
 import UserList       from './UserList';
 import ContactsList   from './ContactsList';
 import IncomingCall   from './IncomingCall';
+import OutgoingCall from './OutgoingCall';
 import MeetingHistory from './MeetingHistory';
 import CallHistory    from './CallHistory';
 import Chat           from './Chat';
@@ -368,7 +369,8 @@ const Dashboard = () => {
   const { socket, emit } = useSocket();
 
   const activeView = pathToView(location.pathname);
-
+const [outgoingCall, setOutgoingCall] = useState(null);
+// { receiverId, receiverName, receiverAvatar, roomId }
   const [incomingCall,     setIncomingCall]     = useState(null);
   const [chatRedirectData, setChatRedirectData] = useState(null);
   const [chatOpen,         setChatOpen]         = useState(false);
@@ -423,6 +425,35 @@ const Dashboard = () => {
     }
   }, [location.state, navigate]);
 
+
+/* chat redirect via location.state */
+  useEffect(() => {
+    if (location.state?.openChat) {
+      setChatRedirectData({
+        conversationId: location.state.conversationId,
+        targetUser:     location.state.targetUser,
+      });
+      navigate('/dashboard/chats', { replace: true, state: {} });
+    }
+  }, [location.state, navigate]);
+
+  /* profile redirect via location.state */
+  useEffect(() => {
+    if (location.state?.openProfile) {
+      navigate('/dashboard/profile', { replace: true, state: {} });
+    }
+  }, [location.state, navigate]);
+
+  /* outgoing call initiated from UserProfilePage */
+  useEffect(() => {
+    if (location.state?.outgoingCall) {
+      const oc = location.state.outgoingCall;
+      setOutgoingCall(oc);
+      navigate('/dashboard', { replace: true, state: {} });
+    }
+  }, [location.state, navigate]);
+
+
   /* profile redirect via location.state */
   useEffect(() => {
     if (location.state?.openProfile) {
@@ -447,12 +478,34 @@ const Dashboard = () => {
       setIncomingCall(data);
       setIncomingCallCount((c) => c + 1);
     });
-    socket.on('call-accepted', ({ roomId }) => navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } }));
+    socket.on('call-accepted', ({ roomId }) => {
+      // Receiver accepted — dismiss popup and enter room
+      setOutgoingCall(null);
+      sessionStorage.removeItem('vmeet_calling');
+      navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } });
+    });
 
     socket.on('call-rejected', () => {
+      setOutgoingCall(null);
+      sessionStorage.removeItem('vmeet_calling');
       toast.error('Call was declined', { icon: '📵' });
     });
 
+    socket.on('call-failed', ({ message }) => {
+      setOutgoingCall(null);
+      sessionStorage.removeItem('vmeet_calling');
+      toast.error(message);
+    });
+    // Outgoing call cancel (caller cancels before receiver answers)
+    const handleCancelOutgoing = () => {
+      if (!outgoingCall) return;
+      emit('cancel-call', {
+        receiverId: outgoingCall.receiverId,
+        callerId:   user._id,
+      });
+      sessionStorage.removeItem('vmeet_calling');
+      setOutgoingCall(null);
+    };
     socket.on('call-cancelled', ({ callerId }) => {
       // Caller hung up before we answered — dismiss the incoming call UI
       setIncomingCall(prev => {
@@ -521,13 +574,20 @@ const handleCallUser = (targetUser, roomId) => {
     callerName:   user.username,
     callerAvatar: user.avatar,
   });
-  toast.success(`Calling ${targetUser.username}...`);
-  // Store who we are calling so VideoRoom can cancel if user leaves early
+
+  // Store for cancel-call emission if caller cancels
   sessionStorage.setItem('vmeet_calling', JSON.stringify({
     receiverId: targetUser._id,
     roomId,
   }));
-  setTimeout(() => navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } }), 1000);
+
+  // Show outgoing call popup — do NOT navigate yet
+  setOutgoingCall({
+    receiverId:    targetUser._id,
+    receiverName:  targetUser.username,
+    receiverAvatar: targetUser.avatar,
+    roomId,
+  });
 };
 
 const handleAcceptCall = () => {
@@ -634,6 +694,18 @@ const handleAcceptCall = () => {
           onReject={handleRejectCall}
         />
       )}
+
+      {outgoingCall && (
+        <OutgoingCall
+          receiver={{
+            username: outgoingCall.receiverName,
+            avatar:   outgoingCall.receiverAvatar,
+          }}
+          onCancel={handleCancelOutgoing}
+        />
+      )}
+
+
     </div>
   );
 };
