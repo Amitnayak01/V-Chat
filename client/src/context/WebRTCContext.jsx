@@ -188,7 +188,18 @@ pc.oniceconnectionstatechange = () => {
     return { success: true };
   }, []);
 
+  // Per-user lock: prevents two concurrent createOffer calls for the same userId.
+  // This is the last line of defense against duplicate peer connections.
+  const offerInProgressRef = useRef(new Set());
+
   const createOffer = useCallback(async (userId, roomId) => {
+    // Deduplicate: if an offer is already in progress for this user, skip.
+    if (offerInProgressRef.current.has(userId)) {
+      console.log('[WebRTC] createOffer: already in progress for', userId, '— skipping');
+      return;
+    }
+    offerInProgressRef.current.add(userId);
+
     // Wait up to 5s for local media to be ready before creating offer
     if (!localStreamRef.current) {
       let waited = 0;
@@ -226,6 +237,9 @@ pc.oniceconnectionstatechange = () => {
       emit('webrtc-offer', { offer, to: userId, from: myUserIdRef.current, roomId });
     } catch (err) {
       console.error('[WebRTC] createOffer:', err);
+    } finally {
+      // Release lock so future legitimate offers (e.g. after next refresh) can proceed
+      offerInProgressRef.current.delete(userId);
     }
   }, [createPeer, emit]);
 
@@ -413,10 +427,11 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
       peerConnectionsRef.current.delete(userId);
     }
     pendingCandidates.current.delete(userId);
+    offerInProgressRef.current.delete(userId);
     removeRemoteStream(userId);
   }, [removeRemoteStream]);
 
-const cleanup = useCallback(() => {
+ const cleanup = useCallback(() => {
     peerConnectionsRef.current.forEach(pc => {
       pc.ontrack                    = null;
       pc.onicecandidate             = null;
@@ -427,6 +442,7 @@ const cleanup = useCallback(() => {
     peerConnectionsRef.current.clear();
     remoteStreamsRef.current.clear();
     pendingCandidates.current.clear();
+    offerInProgressRef.current.clear();
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
