@@ -290,7 +290,20 @@ const { user }     = useAuth();
         navigateBack();
       },
 
-      'room-participants': ({ participants: current }) => setParticipants(current),
+       'room-participants': ({ participants: current }) => {
+        setParticipants(current);
+
+        // If participants already exist when we join, it means the other
+        // person was already in the room — we missed their user-joined event.
+        // Cancel the no-answer timer and mark other as joined.
+        if (current.length > 0) {
+          otherJoinedRef.current = true;
+          if (noAnswerTimerRef.current) {
+            clearTimeout(noAnswerTimerRef.current);
+            noAnswerTimerRef.current = null;
+          }
+        }
+      },
 
       'user-reconnected': ({ userId, username }) => {
         setIsReconnecting(false);
