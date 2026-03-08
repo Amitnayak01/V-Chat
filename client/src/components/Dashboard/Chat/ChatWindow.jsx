@@ -18,6 +18,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useAudioCall } from '../../../context/AudioCallContext'; 
 import { SoundEngine } from '../../../utils/SoundEngine';
 import { readSoundSettings } from '../../../hooks/useSoundSettings';
+import { generateRoomId } from '../../../utils/webrtc';
 
 /* ─── Reply persistence ─────────────────────────────────────────────────── */
 const _LS_KEY = 'vmeet_replies';
@@ -950,12 +951,10 @@ const onStoppedTyping = ({ conversationId, userId }) => {
   }, []);
 
 const handleVideoCall = () => {
-  const roomId = Math.random().toString(36).substring(2, 15);
-  directMessageAPI.sendMessage({
-    receiverId: conversation.user._id,
-    content: '📞 Video call invitation',
-    type: 'video-call',
-  }).catch(() => {});
+  if (!socket?.connected) { toast.error('Not connected to server'); return; }
+
+  const roomId = generateRoomId();
+
   emit('call-user', {
     callerId:     user._id,
     receiverId:   conversation.user._id,
@@ -963,7 +962,24 @@ const handleVideoCall = () => {
     callerName:   user.username,
     callerAvatar: user.avatar,
   });
-  navigate(`/room/${roomId}`, { state: { returnTo: window.location.pathname } });
+
+  sessionStorage.setItem('vmeet_calling', JSON.stringify({
+    receiverId: conversation.user._id,
+    roomId,
+  }));
+
+  // Go to dashboard — Dashboard shows OutgoingCall popup
+  // and waits for accept/reject before entering the room
+  navigate('/dashboard', {
+    state: {
+      outgoingCall: {
+        receiverId:     conversation.user._id,
+        receiverName:   conversation.user.username,
+        receiverAvatar: conversation.user.avatar,
+        roomId,
+      },
+    },
+  });
 };
 
 // ── NEW ──────────────────────────────────────────────────────────────
@@ -1119,7 +1135,11 @@ const handleArchiveConversation = useCallback(async () => {
               <button onClick={() => { setShowSearch((s) => !s); setSearchQuery(''); setSearchResults([]); }} className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600">
                 <Search className="w-4 h-4" />
               </button>
-              <button onClick={handleVideoCall} className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600">
+              <button
+                onClick={handleVideoCall}
+                title="Video call"
+                className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-blue-600 transition-all active:scale-95"
+              >
                 <Video className="w-5 h-5" />
               </button>
                             <button                                                

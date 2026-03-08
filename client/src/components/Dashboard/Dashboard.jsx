@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Video, Link as LinkIcon, Search, Plus, Users,
@@ -370,6 +371,7 @@ const Dashboard = () => {
 
   const activeView = pathToView(location.pathname);
 const [outgoingCall, setOutgoingCall] = useState(null);
+const outgoingCallTimerRef = useRef(null);
 // { receiverId, receiverName, receiverAvatar, roomId }
   const [incomingCall,     setIncomingCall]     = useState(null);
   const [chatRedirectData, setChatRedirectData] = useState(null);
@@ -478,14 +480,23 @@ const [outgoingCall, setOutgoingCall] = useState(null);
       setIncomingCall(data);
       setIncomingCallCount((c) => c + 1);
     });
-    socket.on('call-accepted', ({ roomId }) => {
-      // Receiver accepted — dismiss popup and enter room
+socket.on('call-accepted', ({ roomId }) => {
+      // Clear auto-cancel timer — call was answered
+      if (outgoingCallTimerRef.current) {
+        clearTimeout(outgoingCallTimerRef.current);
+        outgoingCallTimerRef.current = null;
+      }
       setOutgoingCall(null);
       sessionStorage.removeItem('vmeet_calling');
       navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } });
-    });
+    });   
 
     socket.on('call-rejected', () => {
+      // Clear auto-cancel timer — call was declined
+      if (outgoingCallTimerRef.current) {
+        clearTimeout(outgoingCallTimerRef.current);
+        outgoingCallTimerRef.current = null;
+      }
       setOutgoingCall(null);
       sessionStorage.removeItem('vmeet_calling');
       toast.error('Call was declined', { icon: '📵' });
@@ -496,16 +507,7 @@ const [outgoingCall, setOutgoingCall] = useState(null);
       sessionStorage.removeItem('vmeet_calling');
       toast.error(message);
     });
-    // Outgoing call cancel (caller cancels before receiver answers)
-    const handleCancelOutgoing = () => {
-      if (!outgoingCall) return;
-      emit('cancel-call', {
-        receiverId: outgoingCall.receiverId,
-        callerId:   user._id,
-      });
-      sessionStorage.removeItem('vmeet_calling');
-      setOutgoingCall(null);
-    };
+     
     socket.on('call-cancelled', ({ callerId }) => {
       // Caller hung up before we answered — dismiss the incoming call UI
       setIncomingCall(prev => {
@@ -609,6 +611,43 @@ const handleAcceptCall = () => {
     setIncomingCallCount((c) => Math.max(0, c - 1));
   };
 
+const handleCancelOutgoing = useCallback(() => {
+    // Clear auto-cancel timer if running
+    if (outgoingCallTimerRef.current) {
+      clearTimeout(outgoingCallTimerRef.current);
+      outgoingCallTimerRef.current = null;
+    }
+    setOutgoingCall(prev => {
+      if (!prev) return null;
+      // Notify receiver so their ringing stops
+      emit('cancel-call', {
+        receiverId: prev.receiverId,
+        callerId:   user._id,
+      });
+      return null;
+    });
+    sessionStorage.removeItem('vmeet_calling');
+  }, [emit, user._id]);
+
+  // Auto-cancel outgoing call after 30 seconds if no answer
+  useEffect(() => {
+    if (!outgoingCall) return;
+
+    // Start 30s timer
+    outgoingCallTimerRef.current = setTimeout(() => {
+      toast('No answer', { icon: '⏱️', duration: 3000 });
+      handleCancelOutgoing();
+    }, 30000);
+
+    // Cleanup: clear timer if call is answered/rejected/cancelled
+    return () => {
+      if (outgoingCallTimerRef.current) {
+        clearTimeout(outgoingCallTimerRef.current);
+        outgoingCallTimerRef.current = null;
+      }
+    };
+  }, [outgoingCall, handleCancelOutgoing]);
+
   const handleNavigate = (view) => {
     navigate(VIEW_TO_PATH[view] || '/dashboard');
   };
@@ -704,7 +743,6 @@ const handleAcceptCall = () => {
           onCancel={handleCancelOutgoing}
         />
       )}
-
 
     </div>
   );
