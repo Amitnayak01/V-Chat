@@ -257,6 +257,20 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
       }
     }
 
+        if (!localStreamRef.current) {
+      console.log('[WebRTC] handleOffer: waiting for local media...');
+      let waited = 0;
+      await new Promise(resolve => {
+        const check = setInterval(() => {
+          waited += 100;
+          if (localStreamRef.current || waited >= 5000) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+      });
+    }
+
     const pc = createPeer(fromUserId);
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
