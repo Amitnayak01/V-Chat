@@ -448,9 +448,20 @@ const Dashboard = () => {
       setIncomingCallCount((c) => c + 1);
     });
     socket.on('call-accepted', ({ roomId }) => navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } }));
-socket.on('call-rejected', () => {
-  toast.error('Call was declined', { icon: '📵' });
-});
+
+    socket.on('call-rejected', () => {
+      toast.error('Call was declined', { icon: '📵' });
+    });
+
+    socket.on('call-cancelled', ({ callerId }) => {
+      // Caller hung up before we answered — dismiss the incoming call UI
+      setIncomingCall(prev => {
+        if (prev && prev.callerId === callerId) return null;
+        return prev;
+      });
+      setIncomingCallCount(c => Math.max(0, c - 1));
+      toast('Caller cancelled the call', { icon: '📵', duration: 3000 });
+    });
  
     socket.on('call-failed',   ({ message }) => toast.error(message));
     socket.on('user-online',   ({ username }) =>
@@ -511,6 +522,11 @@ const handleCallUser = (targetUser, roomId) => {
     callerAvatar: user.avatar,
   });
   toast.success(`Calling ${targetUser.username}...`);
+  // Store who we are calling so VideoRoom can cancel if user leaves early
+  sessionStorage.setItem('vmeet_calling', JSON.stringify({
+    receiverId: targetUser._id,
+    roomId,
+  }));
   setTimeout(() => navigate(`/room/${roomId}`, { replace: true, state: { returnTo: location.pathname } }), 1000);
 };
 

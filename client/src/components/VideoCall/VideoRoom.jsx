@@ -180,7 +180,10 @@ const { user }     = useAuth();
       if (!result.success) toast.error('Could not access camera / microphone');
     });
 
-    return () => {
+
+
+
+ return () => {
       if (noAnswerTimerRef.current) {
         clearTimeout(noAnswerTimerRef.current);
         noAnswerTimerRef.current = null;
@@ -188,6 +191,22 @@ const { user }     = useAuth();
       if (intentionalLeave.current) {
         emit('leave-room', { roomId, userId: user._id });
         clearCurrentRoom();
+
+        // If caller leaves before receiver accepted, notify receiver
+        // so their ringing UI dismisses and ringtone stops
+        if (!otherJoinedRef.current) {
+          try {
+            const calling = sessionStorage.getItem('vmeet_calling');
+            if (calling) {
+              const { receiverId } = JSON.parse(calling);
+              emit('cancel-call', {
+                receiverId,
+                callerId: user._id,
+              });
+            }
+          } catch (_) {}
+        }
+        sessionStorage.removeItem('vmeet_calling');
       }
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(t => t.stop());
@@ -197,6 +216,9 @@ const { user }     = useAuth();
       otherJoinedRef.current = false;
       cleanup();
     };
+
+
+
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
  
   // ── Effect 2: Join room (once media + socket are ready) ───────────────────

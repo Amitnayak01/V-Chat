@@ -193,6 +193,15 @@ export const handleSocketConnection = (io) => {
       if (callerSocketId) io.to(callerSocketId).emit('call-rejected', { userId, message: 'Call was rejected' });
     });
 
+    socket.on('cancel-call', ({ receiverId, callerId }) => {
+      const receiverSocketId = userSockets.get(receiverId);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit('call-cancelled', {
+          callerId: callerId || socket.userId,
+        });
+        console.log(`📵 Call cancelled by ${callerId} to ${receiverId}`);
+      }
+    });
     // ── join-room ──────────────────────────────────────────────────────────
     socket.on('join-room', async ({ roomId, userId, username, avatar }) => {
       try {
