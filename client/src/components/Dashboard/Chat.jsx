@@ -377,10 +377,14 @@ const Chat = ({ initialConversation, onChatOpen }) => {
 
   /* ─── Back to list ───────────────────────────────────────────────────── */
   const handleBackToList = useCallback(() => {
-    onChatOpen?.(false);
-    setSelectedConversation(null);
-    lsSaveConvId(null);
-  }, [onChatOpen]);
+  onChatOpen?.(false);
+  // If the conversation we're leaving is now archived, switch to archived tab
+  if (selectedConversation?.isArchived) {
+    setActiveTab('archived');
+  }
+  setSelectedConversation(null);
+  lsSaveConvId(null);
+}, [onChatOpen, selectedConversation]);
 
   /* ─── Conversation update callback (from ChatWindow) ─────────────────── */
   const handleConversationUpdate = useCallback((conversationId, patch) => {

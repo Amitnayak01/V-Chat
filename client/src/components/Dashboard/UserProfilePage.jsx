@@ -138,6 +138,11 @@ const UserProfilePage = () => {
   const liveStatus = isOnline ? 'online' : (profile?.status || 'offline');
   const status     = getStatusMeta(liveStatus);
 
+  useEffect(() => {
+    setCalling(false);
+  }, [profile?._id]);
+
+
   /* ── Cleanup timers on unmount ───────────────────────────────────── */
   useEffect(() => {
     return () => {
