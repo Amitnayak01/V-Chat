@@ -181,8 +181,7 @@ const VideoRoom = () => {
 
   // ── Effect 1: Init media ──────────────────────────────────────────────────
   useEffect(() => {
-    cleanup();
-    initializeMedia(user._id).then(result => {
+  initializeMedia(user._id).then(result => {
       if (!result.success) toast.error('Could not access camera / microphone');
     });
 
@@ -296,7 +295,7 @@ const VideoRoom = () => {
             if (!recentReconnectsRef.current.has(userId)) {
               createOffer(userId, roomId);
             }
-          }, 800);
+          }, 2500);
         } else {
           createOffer(userId, roomId);
         }
