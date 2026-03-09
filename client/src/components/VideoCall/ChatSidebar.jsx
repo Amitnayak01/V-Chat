@@ -244,6 +244,7 @@ ScrollToBottomBtn.displayName = 'ScrollToBottomBtn';
 // ─────────────────────────────────────────────────────────────────────────────
 const ChatSidebar = ({ roomId, socket, isOpen, onClose, roomEvents = [], onUnread }) => {
   const { user } = useAuth();
+if (!user) return null; // ← ADD this line right after
 
   const [messages,    setMessages]    = useState([]);
   const [newMessage,  setNewMessage]  = useState('');

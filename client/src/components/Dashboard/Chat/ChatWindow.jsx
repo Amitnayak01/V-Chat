@@ -949,7 +949,6 @@ const onStoppedTyping = ({ conversationId, userId }) => {
     try { const res = await directMessageAPI.searchMessages(q); if (res.data.success) setSearchResults(res.data.messages || []); }
     catch (_) {}
   }, []);
-
 const handleVideoCall = () => {
   if (!socket?.connected) { toast.error('Not connected to server'); return; }
 
@@ -968,19 +967,17 @@ const handleVideoCall = () => {
     roomId,
   }));
 
-  // Go to dashboard — Dashboard shows OutgoingCall popup
-  // and waits for accept/reject before entering the room
-  navigate('/dashboard', {
-    state: {
-      outgoingCall: {
-        receiverId:     conversation.user._id,
-        receiverName:   conversation.user.username,
-        receiverAvatar: conversation.user.avatar,
-        roomId,
-      },
-    },
-  });
+  // Tell GlobalOutgoingCall to show popup — NO navigate
+ window.dispatchEvent(new CustomEvent('outgoing-call-started', {
+  detail: {
+    receiverId:     conversation.user._id,
+    receiverName:   conversation.user.username,
+    receiverAvatar: conversation.user.avatar,
+    roomId,
+  }
+}));
 };
+
 
 // ── NEW ──────────────────────────────────────────────────────────────
 const handleAudioCall = async () => {

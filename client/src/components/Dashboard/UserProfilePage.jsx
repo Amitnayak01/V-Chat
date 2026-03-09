@@ -138,10 +138,37 @@ const UserProfilePage = () => {
   const liveStatus = isOnline ? 'online' : (profile?.status || 'offline');
   const status     = getStatusMeta(liveStatus);
 
-  useEffect(() => {
-    setCalling(false);
-  }, [profile?._id]);
+useEffect(() => {
+  setCalling(false);
+}, [profile?._id]);
 
+useEffect(() => {
+  if (!socket) return;
+
+  const resetCalling      = () => setCalling(false);
+  const resetVoiceCalling = () => setVoiceCalling(false);
+
+  socket.on('call-accepted',       resetCalling);
+  socket.on('call-rejected',       resetCalling);
+  socket.on('call-failed',         resetCalling);
+  socket.on('audio-call-accepted', resetVoiceCalling);
+  socket.on('audio-call-rejected', resetVoiceCalling);
+  socket.on('audio-call-ended',    resetVoiceCalling);
+  socket.on('audio-call-failed',   resetVoiceCalling);
+
+  window.addEventListener('outgoing-call-cancelled', resetCalling);
+
+  return () => {
+    socket.off('call-accepted',       resetCalling);
+    socket.off('call-rejected',       resetCalling);
+    socket.off('call-failed',         resetCalling);
+    socket.off('audio-call-accepted', resetVoiceCalling);
+    socket.off('audio-call-rejected', resetVoiceCalling);
+    socket.off('audio-call-ended',    resetVoiceCalling);
+    socket.off('audio-call-failed',   resetVoiceCalling);
+    window.removeEventListener('outgoing-call-cancelled', resetCalling);
+  };
+}, [socket]);
 
   /* ── Cleanup timers on unmount ───────────────────────────────────── */
   useEffect(() => {
@@ -234,50 +261,46 @@ const UserProfilePage = () => {
   };
 
   /* ── Video call handler ──────────────────────────────────────────── */
-  const handleCall = () => {
-    if (calling) return;
-    if (!socket?.connected) { toast.error('Not connected to server. Please wait…'); return; }
+const handleCall = () => {
+  if (calling) return;
+  if (!socket?.connected) { toast.error('Not connected to server. Please wait…'); return; }
 
-    const roomId = generateRoomId();
+  const roomId = generateRoomId();
 
-    emit('call-user', {
-      callerId:     currentUser._id,
-      receiverId:   profile._id,
-      roomId,
-      callerName:   currentUser.username,
-      callerAvatar: currentUser.avatar,
-    });
+  emit('call-user', {
+    callerId:     currentUser._id,
+    receiverId:   profile._id,
+    roomId,
+    callerName:   currentUser.username,
+    callerAvatar: currentUser.avatar,
+  });
 
-    // Store receiver info so VideoRoom can cancel if caller leaves early
-    sessionStorage.setItem('vmeet_calling', JSON.stringify({
-      receiverId: profile._id,
-      roomId,
-    }));
+  sessionStorage.setItem('vmeet_calling', JSON.stringify({
+    receiverId: profile._id,
+    roomId,
+  }));
 
-    setCalling(true);
+  // Tell GlobalOutgoingCall to show the popup — NO navigate
+window.dispatchEvent(new CustomEvent('outgoing-call-started', {
+  detail: {
+    receiverId:     profile._id,
+    receiverName:   profile.username,
+    receiverAvatar: profile.avatar,
+    roomId,
+  }
+}));
 
-    // Navigate to dashboard with outgoing call state
-    // Dashboard reads this state and shows the OutgoingCall popup
-    // The popup waits for call-accepted or call-rejected before entering room
-    navigate('/dashboard', {
-      state: {
-        outgoingCall: {
-          receiverId:     profile._id,
-          receiverName:   profile.username,
-          receiverAvatar: profile.avatar,
-          roomId,
-        },
-      },
-    });
-  };
-
+  setCalling(true);
+  setTimeout(() => setCalling(false), 31000); // reset after auto-cancel
+};
   /* ── Voice / audio call handler — uses AudioCallContext ─────────── */
-  const handleVoiceCall = () => {
-    if (voiceCalling) return;
-    initiateCall(profile._id, profile.username, profile.avatar);
-    setVoiceCalling(true);
-    voiceCallTimerRef.current = setTimeout(() => setVoiceCalling(false), 6000);
-  };
+const handleVoiceCall = () => {
+  if (voiceCalling) return;
+  initiateCall(profile._id, profile.username, profile.avatar);
+  setVoiceCalling(true);
+  clearTimeout(voiceCallTimerRef.current);
+  voiceCallTimerRef.current = setTimeout(() => setVoiceCalling(false), 31000);
+};
 
   /* ── Edit profile nav — unchanged ───────────────────────────────── */
   const handleEditProfile = () => navigate('/dashboard/profile');
