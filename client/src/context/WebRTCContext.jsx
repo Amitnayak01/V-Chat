@@ -292,10 +292,7 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
         }, 100);
       });
     }
-
- 
-// If media never became available after waiting, abort.
-// Creating a peer with no tracks sends a trackless answer
+    
 // which is why the refreshed user appeared black/silent.
 if (!localStreamRef.current) {
   console.error('[WebRTC] handleOffer: local stream unavailable — aborting');
