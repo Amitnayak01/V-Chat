@@ -255,9 +255,15 @@ export const WebRTCProvider = ({ children }) => {
       });
     }
 
-    const pc = createPeer(fromUserId);
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  // ✅ FIX: abort if media never arrived instead of creating trackless peer
+if (!localStreamRef.current) {
+  console.error('[WebRTC] handleOffer: local media unavailable after 5s — aborting');
+  return;
+}
+
+const pc = createPeer(fromUserId);
+try {
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
       await flushPendingCandidates(fromUserId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
