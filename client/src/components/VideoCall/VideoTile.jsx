@@ -97,30 +97,25 @@ const VideoTile = memo(({
 
       const vt = stream.getVideoTracks();
       const live = vt.length > 0 && vt.some(t => t.readyState !== 'ended' && t.enabled);
-
-      if (live) {
-  setHasVideo(true);
-  tryPlay(v);
-  if (v.readyState >= 2 && v.videoWidth > 0) {
-    clearInterval(pollTimer);
-  }
-}
+      if (live && v.readyState >= 2 && v.videoWidth > 0) {
+        setHasVideo(true);
+        tryPlay(v);
+        clearInterval(pollTimer);
+      } else if (live) {
+        // Track exists but video not flowing yet — try play again
+        tryPlay(v);
+      }
     }, 400);
 
-
-
-const onAddTrack = (e) => {
-  if (e.track.kind === 'video') {
-    e.track.onunmute  = () => { setHasVideo(true); tryPlay(v); };
-    e.track.onended   = () => checkVideoTrack();
-    setHasVideo(true);
-    checkVideoTrack();
-    tryPlay(v);
-  }
-};
-
-
-
+    // ── Addtrack: fires when a track is added to the SAME stream object ───
+    // This is the main fix for the "same MediaStream reference" problem.
+    const onAddTrack = (e) => {
+      if (e.track.kind === 'video') {
+        e.track.onunmute = () => { setHasVideo(true); tryPlay(v); };
+        checkVideoTrack();
+        tryPlay(v);
+      }
+    };
     const onRemoveTrack = () => checkVideoTrack();
 
     // ── Video element events ──────────────────────────────────────────────

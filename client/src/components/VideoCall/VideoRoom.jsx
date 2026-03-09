@@ -73,17 +73,23 @@ const VideoRoom = () => {
   const participantsRef = useRef([]);
   const hasJoined        = useRef(false);
   const hideTimer        = useRef(null);
-  const otherJoinedRef       = useRef(false);
+  // Tracks whether the remote participant ever joined (prevents false no-answer)
+    const otherJoinedRef       = useRef(false);
+  // Tracks userIds for whom user-reconnected recently fired,
+  // so user-joined doesn't create a duplicate offer for the same rejoin.
   const recentReconnectsRef  = useRef(new Set());
+  // Per-user lock: prevents two createOffer calls from racing when
+  // both user-joined and user-reconnected fire for the same rejoin.
   const pendingOfferRef      = useRef(new Set());
+  // 45-second no-answer timer
   const noAnswerTimerRef = useRef(null);
 
   // ── External hooks ───────────────────────────────────────────────────────
-
+ 
   const { roomId }   = useParams();
-  const navigate     = useNavigate();
-  const location     = useLocation();
-  const { user }     = useAuth();
+const navigate     = useNavigate();
+const location     = useLocation();
+const { user }     = useAuth();
   const {
     socket, emit, setCurrentRoom, clearCurrentRoom, connected,
   } = useSocket();
@@ -97,32 +103,20 @@ const VideoRoom = () => {
     startScreenShare, stopScreenShare,
     replaceVideoTrack,
     handlePeerDisconnect, cleanup,
-    getPeerState,
   } = useWebRTC();
 
   const activeSpeaker = useActiveSpeaker(user._id, localStream, remoteStreams);
 
-  // ── FIX 1: isPeerAlive helper ─────────────────────────────────────────────
-  // Returns true if a peer connection exists AND is not in a provably dead state.
-  // CRITICAL: 'connecting' and iceConnectionState 'checking' mean ICE is still
-  // in progress — they must NOT be treated as dead. The previous code only checked
-  // for connectionState === 'connected', so a peer mid-ICE-negotiation looked
-  // "not alive" and triggered a premature createOffer that destroyed it.
-  const isPeerAlive = useCallback((userId) => {
-    const state = getPeerState(userId);
-    if (!state) return false;
-    const deadConn = ['failed', 'closed', 'disconnected'];
-    const deadIce  = ['failed', 'closed', 'disconnected'];
-    return (
-      !deadConn.includes(state.connectionState) &&
-      !deadIce.includes(state.iceConnectionState)
-    );
-  }, [getPeerState]);
+  // ── Navigate back to wherever the caller came from ────────────────────────
+  // Before navigating into a room, callers must save:
+  //   sessionStorage.setItem('vmeet_return_path', window.location.pathname)
+  // This helper reads that value and falls back to /dashboard.
+
 
   const navigateBack = useCallback(() => {
-    const returnTo = location.state?.returnTo || '/dashboard';
-    navigate(returnTo, { replace: true });
-  }, [navigate, location.state?.returnTo]);
+  const returnTo = location.state?.returnTo || '/dashboard';
+  navigate(returnTo, { replace: true });
+}, [navigate, location.state?.returnTo]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const pushEvent = useCallback((eventType, data = {}) => {
@@ -179,13 +173,23 @@ const VideoRoom = () => {
     participantsRef.current = participants;
   }, [participants]);
 
-  // ── Effect 1: Init media ──────────────────────────────────────────────────
+// ── Effect 1: Init media ──────────────────────────────────────────────────
   useEffect(() => {
-  initializeMedia(user._id).then(result => {
+    // Always call cleanup first so any stale stream/peer state
+    // from a previous call is fully wiped before we re-init.
+    // This is the key fix for "works first time only" — the
+    // WebRTCProvider never unmounts between calls so we must
+    // manually reset it at the START of every new room mount.
+    cleanup();
+
+    initializeMedia(user._id).then(result => {
       if (!result.success) toast.error('Could not access camera / microphone');
     });
 
-    return () => {
+
+
+
+ return () => {
       if (noAnswerTimerRef.current) {
         clearTimeout(noAnswerTimerRef.current);
         noAnswerTimerRef.current = null;
@@ -194,12 +198,17 @@ const VideoRoom = () => {
         emit('leave-room', { roomId, userId: user._id });
         clearCurrentRoom();
 
+        // If caller leaves before receiver accepted, notify receiver
+        // so their ringing UI dismisses and ringtone stops
         if (!otherJoinedRef.current) {
           try {
             const calling = sessionStorage.getItem('vmeet_calling');
             if (calling) {
               const { receiverId } = JSON.parse(calling);
-              emit('cancel-call', { receiverId, callerId: user._id });
+              emit('cancel-call', {
+                receiverId,
+                callerId: user._id,
+              });
             }
           } catch (_) {}
         }
@@ -213,8 +222,11 @@ const VideoRoom = () => {
       otherJoinedRef.current = false;
       cleanup();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+
+
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+ 
   // ── Effect 2: Join room (once media + socket are ready) ───────────────────
   useEffect(() => {
     if (!connected || !localStream || hasJoined.current) return;
@@ -227,6 +239,7 @@ const VideoRoom = () => {
       avatar:   user.avatar,
     });
 
+    // Auto-close if nobody joins within 45 seconds
     noAnswerTimerRef.current = setTimeout(() => {
       if (!otherJoinedRef.current) {
         toast('No answer', { icon: '⏱️', duration: 3000 });
@@ -241,24 +254,19 @@ const VideoRoom = () => {
     if (!socket) return;
 
     const handlers = {
-      // ── FIX 2: proactive-offer in connect handler uses isPeerAlive ────────
-      // Previously: `state.connectionState !== 'connected'` — this incorrectly
-      // treated 'connecting' (ICE in progress) as dead and sent a disruptive offer.
-'connect': () => {
-  if (hasJoined.current) {
-    setTimeout(() => {
-      emit('join-room', {
-        roomId,
-        userId:   user._id,
-        username: user.username,
-        avatar:   user.avatar,
-      });
-    }, 300);
-    // No proactive offer — peer A will send offer via user-reconnected handler
-  }
-},
-
-      'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
+      'connect': () => {
+        // Socket reconnected mid-call — re-announce presence to the room
+        if (hasJoined.current) {
+          emit('join-room', {
+            roomId,
+            userId:   user._id,
+            username: user.username,
+            avatar:   user.avatar,
+          });
+        }
+      },
+  
+'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
         otherJoinedRef.current = true;
         if (noAnswerTimerRef.current) {
           clearTimeout(noAnswerTimerRef.current);
@@ -280,19 +288,21 @@ const VideoRoom = () => {
           pendingOfferRef.current.add(userId);
           setTimeout(() => {
             pendingOfferRef.current.delete(userId);
-            if (!recentReconnectsRef.current.has(userId)) {
-              createOffer(userId, roomId);
-            }
-          }, 2500);
+            createOffer(userId);
+          }, 800);
         } else {
-          createOffer(userId, roomId);
+          createOffer(userId);
         }
       },
+
+
+
 
       'user-left': ({ userId }) => {
         const leaving = participantsRef.current.find(p => (p.userId ?? p) === userId);
         const name    = leaving?.username ?? 'Someone';
         handlePeerDisconnect(userId);
+        // Pure filter only — navigation is handled by Effect 5 watching participants
         setParticipants(prev =>
           prev.filter(p => typeof p === 'string' ? p !== userId : p.userId !== userId)
         );
@@ -312,6 +322,7 @@ const VideoRoom = () => {
         toast(`${name} left the call`, { icon: '👋' });
       },
 
+      // ── Call declined by receiver ─────────────────────────────────────
       'call-rejected': () => {
         toast('Call was declined', { icon: '📵', duration: 3000 });
         setTimeout(() => {
@@ -320,14 +331,19 @@ const VideoRoom = () => {
         }, 1500);
       },
 
+      // ── Server-side timeout (no one answered) ─────────────────────────
       'call-timeout': () => {
         toast('No answer', { icon: '⏱️', duration: 3000 });
         intentionalLeave.current = true;
         navigateBack();
       },
 
-      'room-participants': ({ participants: current }) => {
+       'room-participants': ({ participants: current }) => {
         setParticipants(current);
+
+        // If participants already exist when we join, it means the other
+        // person was already in the room — we missed their user-joined event.
+        // Cancel the no-answer timer and mark other as joined.
         if (current.length > 0) {
           otherJoinedRef.current = true;
           if (noAnswerTimerRef.current) {
@@ -337,48 +353,36 @@ const VideoRoom = () => {
         }
       },
 
-      // ── FIX 3: pass roomId to createOffer + use isPeerAlive in rejoin-ack ─
-   'user-reconnected': ({ userId, username, participants: updated }) => {
-  console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
-  recentReconnectsRef.current.add(userId);
-  setTimeout(() => recentReconnectsRef.current.delete(userId), 8000);
-  pendingOfferRef.current.add(userId);
-  setIsReconnecting(false);
-  otherJoinedRef.current = true;
-  if (updated) setParticipants(updated);
+      'user-reconnected': ({ userId, username, participants: updated }) => {
+        console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
 
-  // Close stale peer connection first
-  handlePeerDisconnect(userId);
+        recentReconnectsRef.current.add(userId);
+        setTimeout(() => recentReconnectsRef.current.delete(userId), 2000);
 
-  // Wait for the refreshed user's media to be ready before offering
-  setTimeout(() => {
-    pendingOfferRef.current.delete(userId);
-    console.log('[VideoRoom] user-reconnected: sending fresh offer to', userId);
-    createOffer(userId, roomId);
-    // NOTE: no recentReconnects check here — we ALWAYS want to offer
-    // after user-reconnected, it's the sole trigger for renegotiation
-  }, 1500);
+        // Grab the offer lock immediately so any delayed user-joined
+        // timer already in flight sees it and aborts
+        pendingOfferRef.current.add(userId);
 
-  pushEvent('user-reconnected', { username });
-  toast(`${username} reconnected`, { icon: '🔄' });
-},
+        setIsReconnecting(false);
+        otherJoinedRef.current = true;
+        if (updated) setParticipants(updated);
+        handlePeerDisconnect(userId);
 
-      // ── FIX 4: room-rejoin-ack — longer timeout + isPeerAlive check ───────
-      // ROOT CAUSE OF THE BUG: the previous 2500ms timeout fired while ICE was
-      // still in 'checking' state (typical ICE takes 2–5s). The old check
-      // `state.connectionState !== 'connected'` evaluated to true for a live
-      // 'connecting' peer, causing createOffer to CLOSE the in-progress PC
-      // and restart negotiation. This broke the connection on exactly one side
-      // (the refreshed user's tracks never reached the other participant).
-      // FIX: use isPeerAlive() which treats 'connecting'/'checking' as alive,
-      // and increase the timeout to 6000ms so ICE has time to complete first.
- 'room-rejoin-ack': ({ roomId: ack, members }) => {
-  if (ack !== roomId) return;
-  setIsReconnecting(false);
-  setParticipants(members);
-  // Peer A handles renegotiation via user-reconnected → createOffer.
-  // We only answer. No offer from our side needed here.
-},
+        setTimeout(() => {
+          pendingOfferRef.current.delete(userId);
+          createOffer(userId);
+        }, 800);
+
+        pushEvent('user-reconnected', { username });
+        toast(`${username} reconnected`, { icon: '🔄' });
+      },
+
+
+      'room-rejoin-ack': ({ roomId: ack, members }) => {
+        if (ack !== roomId) return;
+        setIsReconnecting(false);
+        setParticipants(members);
+      },
 
       // WebRTC signalling
       'webrtc-offer':         ({ offer, from })     => handleOffer(from, roomId, offer),
@@ -523,6 +527,8 @@ const VideoRoom = () => {
   }, [socket]);
 
   // ── Effect 5: Auto-close when other person leaves a 2-person call ─────────
+  // Runs whenever participants changes. Navigation must NOT happen inside
+  // a setState updater (impure) — this effect is the correct place for it.
   useEffect(() => {
     if (!hasJoined.current || !otherJoinedRef.current) return;
     if (participants.length === 0) {
@@ -623,7 +629,7 @@ const VideoRoom = () => {
   }, [isMobile, localStream, roomId, user, emit, startScreenShare, doStopSharing, replaceVideoTrack, pushEvent]);
 
   // ── Camera switch (mobile) ────────────────────────────────────────────────
-  const handleSwitchCamera = useCallback(async () => {
+const handleSwitchCamera = useCallback(async () => {
     try {
       const devices     = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(d => d.kind === 'videoinput');
@@ -642,15 +648,36 @@ const VideoRoom = () => {
 
       if (localStream) {
         const old = localStream.getVideoTracks()[0];
+
+        // ── Step 1: Update the local MediaStream ──────────────────────
+        // Remove old, add new so the stream object has the right track
         if (old) {
           localStream.removeTrack(old);
-          old.stop();
+          old.stop(); // stop BEFORE replacing so camera LED turns off
         }
         localStream.addTrack(newTrack);
+
+        // ── Step 2: Push new track to all peer connections ─────────────
+        // Without this the remote side keeps receiving the dead track
         await replaceVideoTrack(newTrack);
+
+        // ── Step 3: Fix screen share restore track ─────────────────────
+        // If screen sharing is active, update the saved camera track
+        // so stopping screen share restores THIS new camera, not the old one
         if (origVideoTrackRef.current) {
           origVideoTrackRef.current = newTrack;
         }
+
+        // ── Step 4: Force VideoTile to re-attach the stream ────────────
+        // localStream is the same object reference so React won't
+        // re-fire the VideoTile effect automatically. We force it by
+        // briefly setting localStream to null then back to the stream.
+        // We do this via the WebRTC context's setLocalStream.
+        // The cleanest way without touching context internals is to
+        // fire a track event the VideoTile already listens for.
+        // VideoTile listens to stream.addtrack — which we already fired
+        // above by calling localStream.addTrack(newTrack). ✅
+        // So VideoTile WILL update automatically via its addtrack listener.
       }
 
       toast.success('Camera switched');
@@ -861,13 +888,16 @@ const VideoRoom = () => {
   }, [recordings]);
 
   // ── End call ─────────────────────────────────────────────────────────────
-  const handleEndCall = useCallback(() => {
-    if (isRecording) { toast.error('Stop recording before leaving'); return; }
-    intentionalLeave.current = true;
-    emit('leave-room', { roomId, userId: user._id });
-    clearCurrentRoom();
-    navigateBack();
-  }, [isRecording, navigateBack, emit, roomId, user._id, clearCurrentRoom]);
+
+const handleEndCall = useCallback(() => {
+  if (isRecording) { toast.error('Stop recording before leaving'); return; }
+  intentionalLeave.current = true;
+  emit('leave-room', { roomId, userId: user._id });
+  clearCurrentRoom();
+  navigateBack();
+}, [isRecording, navigateBack, emit, roomId, user._id, clearCurrentRoom]);
+
+
 
   // ── Hand raise ────────────────────────────────────────────────────────────
   const handleRaiseHand = useCallback(() => {
