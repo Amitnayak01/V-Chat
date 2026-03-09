@@ -284,6 +284,8 @@ const { user }     = useAuth();
           console.log('[VideoRoom] user-joined skipped — offer already pending for', userId);
           return;
         }
+
+
 if (isRejoin) {
   console.log('[VideoRoom] user-joined isRejoin — delaying offer for', userId);
   pendingOfferRef.current.add(userId);
@@ -293,9 +295,9 @@ if (isRejoin) {
       createOffer(userId);
     }
   }, 800);
-}else {
-          createOffer(userId);
-        }
+} else {
+  createOffer(userId);
+}
       },
       'user-left': ({ userId }) => {
         const leaving = participantsRef.current.find(p => (p.userId ?? p) === userId);
