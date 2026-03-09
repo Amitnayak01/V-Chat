@@ -88,13 +88,21 @@ export const handleSocketConnection = (io) => {
      registerAudioCallHandlers(io, socket); 
 
     // ── user-online ────────────────────────────────────────────────────────
-    socket.on('user-online', async (userId) => {
-      try {
-        const user = await User.findById(userId);
-        if (!user) return;
+  socket.on('user-online', async (userId) => {
+  try {
+    const wasInGrace = pendingDisconnects.has(userId);
 
-        const wasInGrace = pendingDisconnects.has(userId);
+    if (wasInGrace) {
+      socket.reconnectedRooms = new Set();
+      for (const [roomId, members] of activeRooms.entries()) {
+        if (members.has(userId)) {
+          socket.reconnectedRooms.add(roomId);
+        }
+      }
+    }
 
+    const user = await User.findById(userId);
+    if (!user) return;
         userSockets.set(userId, socket.id);
         socket.userId   = userId;
         socket.username = user.username;
@@ -110,7 +118,6 @@ export const handleSocketConnection = (io) => {
           cancelGrace(userId);
           console.log(`♻️  User ${user.username} reconnected within grace period`);
 
-          socket.reconnectedRooms = new Set();
 
           // Snapshot room membership NOW (before the setTimeout)
           // so we use accurate data even if something changes in 500ms
