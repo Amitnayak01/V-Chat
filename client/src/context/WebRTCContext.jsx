@@ -292,17 +292,10 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
         }, 100);
       });
     }
-    
-// which is why the refreshed user appeared black/silent.
-if (!localStreamRef.current) {
-  console.error('[WebRTC] handleOffer: local stream unavailable — aborting');
-  return;
-}
 
-const pc = createPeer(fromUserId);
-try {
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
+    const pc = createPeer(fromUserId);
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
       await flushPendingCandidates(fromUserId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);

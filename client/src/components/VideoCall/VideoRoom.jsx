@@ -254,40 +254,48 @@ const { user }     = useAuth();
     if (!socket) return;
 
     const handlers = {
-   
       'connect': () => {
-  // Socket reconnected mid-call — reset hasJoined so Effect 2
-  // re-runs and emits join-room after media is re-initialized.
-  // Do NOT emit join-room here directly — localStream may be null
-  // at this point if the page just refreshed.
-  if (hasJoined.current) {
-    hasJoined.current = false;
-  }
-},
+        // Socket reconnected mid-call — re-announce presence to the room
+        if (hasJoined.current) {
+          emit('join-room', {
+            roomId,
+            userId:   user._id,
+            username: user.username,
+            avatar:   user.avatar,
+          });
+        }
+      },
   
-
 'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
-  otherJoinedRef.current = true;
-  if (noAnswerTimerRef.current) {
-    clearTimeout(noAnswerTimerRef.current);
-    noAnswerTimerRef.current = null;
-  }
-  setParticipants(updated || []);
+        otherJoinedRef.current = true;
+        if (noAnswerTimerRef.current) {
+          clearTimeout(noAnswerTimerRef.current);
+          noAnswerTimerRef.current = null;
+        }
+        setParticipants(updated || []);
 
-  // If user-reconnected already fired for this userId,
-  // that handler owns the offer — skip here to avoid duplicate.
-  if (recentReconnectsRef.current.has(userId)) {
-    console.log('[VideoRoom] user-joined skipped — user-reconnected already handled', userId);
-    return;
-  }
-  if (pendingOfferRef.current.has(userId)) {
-    console.log('[VideoRoom] user-joined skipped — offer already pending for', userId);
-    return;
-  }
+        if (recentReconnectsRef.current.has(userId)) {
+          console.log('[VideoRoom] user-joined skipped — user-reconnected already handled', userId);
+          return;
+        }
+        if (pendingOfferRef.current.has(userId)) {
+          console.log('[VideoRoom] user-joined skipped — offer already pending for', userId);
+          return;
+        }
 
-  // Always pass roomId to createOffer
-  createOffer(userId, roomId);
-},
+        if (isRejoin) {
+          console.log('[VideoRoom] user-joined isRejoin — delaying offer for', userId);
+          pendingOfferRef.current.add(userId);
+          setTimeout(() => {
+            pendingOfferRef.current.delete(userId);
+            createOffer(userId);
+          }, 800);
+        } else {
+          createOffer(userId);
+        }
+      },
+
+
 
 
       'user-left': ({ userId }) => {
@@ -345,30 +353,30 @@ const { user }     = useAuth();
         }
       },
 
-'user-reconnected': ({ userId, username, participants: updated }) => {
-  console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
+      'user-reconnected': ({ userId, username, participants: updated }) => {
+        console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
 
-  recentReconnectsRef.current.add(userId);
-  // Keep blocked for 8s — long enough to cover the 700ms delayed
-  // user-joined that the server sends after join-room
-  setTimeout(() => recentReconnectsRef.current.delete(userId), 8000);
+        recentReconnectsRef.current.add(userId);
+        setTimeout(() => recentReconnectsRef.current.delete(userId), 2000);
 
-  pendingOfferRef.current.add(userId);
+        // Grab the offer lock immediately so any delayed user-joined
+        // timer already in flight sees it and aborts
+        pendingOfferRef.current.add(userId);
 
-  setIsReconnecting(false);
-  otherJoinedRef.current = true;
-  if (updated) setParticipants(updated);
-  handlePeerDisconnect(userId);
+        setIsReconnecting(false);
+        otherJoinedRef.current = true;
+        if (updated) setParticipants(updated);
+        handlePeerDisconnect(userId);
 
-  setTimeout(() => {
-    pendingOfferRef.current.delete(userId);
-    // Pass roomId — required for the offer payload
-    createOffer(userId, roomId);
-  }, 1500);
+        setTimeout(() => {
+          pendingOfferRef.current.delete(userId);
+          createOffer(userId);
+        }, 800);
 
-  pushEvent('user-reconnected', { username });
-  toast(`${username} reconnected`, { icon: '🔄' });
-},
+        pushEvent('user-reconnected', { username });
+        toast(`${username} reconnected`, { icon: '🔄' });
+      },
+
 
       'room-rejoin-ack': ({ roomId: ack, members }) => {
         if (ack !== roomId) return;
