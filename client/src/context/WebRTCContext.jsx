@@ -431,6 +431,15 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     removeRemoteStream(userId);
   }, [removeRemoteStream]);
 
+  const getPeerState = useCallback((userId) => {
+  const pc = peerConnectionsRef.current.get(userId);
+  if (!pc) return null;
+  return {
+    connectionState:    pc.connectionState,
+    iceConnectionState: pc.iceConnectionState,
+  };
+}, []);
+
  const cleanup = useCallback(() => {
     peerConnectionsRef.current.forEach(pc => {
       pc.ontrack                    = null;
@@ -479,6 +488,7 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
       replaceVideoTrack,
       handlePeerDisconnect,
       cleanup,
+      getPeerState,
     }}>
       {children}
     </WebRTCContext.Provider>

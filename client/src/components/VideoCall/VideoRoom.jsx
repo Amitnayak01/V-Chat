@@ -103,6 +103,7 @@ const { user }     = useAuth();
     startScreenShare, stopScreenShare,
     replaceVideoTrack,
     handlePeerDisconnect, cleanup,
+    getPeerState,
   } = useWebRTC();
 
   const activeSpeaker = useActiveSpeaker(user._id, localStream, remoteStreams);
@@ -264,6 +265,21 @@ const { user }     = useAuth();
         avatar:   user.avatar,
       });
     }, 300);
+
+    // After 3s, check if the other side reconnected us.
+    // If not, we proactively create the offer ourselves.
+    setTimeout(() => {
+      participantsRef.current
+        .filter(p => (p.userId ?? p) !== user._id)
+        .forEach(p => {
+          const uid   = p.userId ?? p;
+          const state = getPeerState(uid);
+          if (!state || state.connectionState !== 'connected') {
+            console.log('[VideoRoom] connect fallback: proactive offer →', uid);
+            createOffer(uid, roomId);
+          }
+        });
+    }, 3000);
   }
 },
 
@@ -374,11 +390,27 @@ if (isRejoin) {
       },
 
 
-      'room-rejoin-ack': ({ roomId: ack, members }) => {
-        if (ack !== roomId) return;
-        setIsReconnecting(false);
-        setParticipants(members);
-      },
+     'room-rejoin-ack': ({ roomId: ack, members }) => {
+  if (ack !== roomId) return;
+  setIsReconnecting(false);
+  setParticipants(members);
+
+  // After 2.5s, check if connection established.
+  // If not, send offer proactively from our side.
+  const others = members.filter(m => (m.userId ?? m) !== user._id);
+  if (others.length > 0) {
+    setTimeout(() => {
+      others.forEach(m => {
+        const uid   = m.userId ?? m;
+        const state = getPeerState(uid);
+        if (!state || state.connectionState !== 'connected') {
+          console.log('[VideoRoom] rejoin-ack fallback: proactive offer →', uid);
+          createOffer(uid, roomId);
+        }
+      });
+    }, 2500);
+  }
+},
 
       // WebRTC signalling
       'webrtc-offer':         ({ offer, from })     => handleOffer(from, roomId, offer),
