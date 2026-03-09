@@ -39,12 +39,20 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('user', JSON.stringify(res.data.user));
           }
         })
-        .catch(() => {
-          // Token expired or invalid — force logout cleanly
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setToken(null);
-          setUser(null);
+        .catch((err) => {
+          const status = err?.response?.status;
+
+          // Only force logout on actual auth errors (401/403)
+          // If server is sleeping (network error = no status), keep the
+          // locally stored session alive so the user stays on dashboard
+          if (status === 401 || status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            setToken(null);
+            setUser(null);
+          }
+          // No status = network error (server cold-starting) → do nothing,
+          // user stays logged in with the data already restored from localStorage
         });
     }
 

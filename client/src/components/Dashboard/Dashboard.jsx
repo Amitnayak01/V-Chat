@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Video, Link as LinkIcon, Search, Plus, Users,
   Share2, Clock, Zap, Calendar, ArrowRight,
-  CheckCheck, Sparkles,
+  CheckCheck, Sparkles,RefreshCw,
   Home, MessageCircle, History, Settings as SettingsIcon,
   Phone,
 } from 'lucide-react';
@@ -156,11 +156,19 @@ const MobileBottomNav = ({ activeView, onNavigate, unreadChats, user }) => (
 /* ─────────────────────────────────────────────
    Meetings View
 ───────────────────────────────────────────── */
-const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigate }) => {
-  const [joinInput,   setJoinInput]   = useState('');
-  const [joinError,   setJoinError]   = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [copied,      setCopied]      = useState(false);
+const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigate, onRefresh }) => {
+  const [joinInput,     setJoinInput]     = useState('');
+  const [joinError,     setJoinError]     = useState('');
+  const [searchQuery,   setSearchQuery]   = useState('');
+  const [copied,        setCopied]        = useState(false);
+  const [isRefreshing,  setIsRefreshing]  = useState(false);
+
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    await onRefresh?.();
+    setTimeout(() => setIsRefreshing(false), 800);
+  };
   const [recentRooms, setRecentRooms] = useState(() => {
     try { return JSON.parse(localStorage.getItem('vmeet_recent_rooms') || '[]'); }
     catch { return []; }
@@ -270,7 +278,7 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
       </div>
 
       {/* Quick Actions */}
-      <div className="flex flex-wrap gap-2 sm:gap-2.5 mb-6 sm:mb-7">
+  <div className="flex flex-wrap gap-2 sm:gap-2.5 mb-6 sm:mb-7">
         <button
           onClick={handleCopyWithFeedback}
           className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
@@ -289,8 +297,17 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
         >
           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> View History
         </button>
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold border bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCw
+            className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+          />
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
-
       {/* Recent Rooms */}
       {recentRooms.length > 0 && (
         <div className="mb-5 sm:mb-6 p-3.5 sm:p-4 rounded-2xl bg-amber-50 border border-amber-100">
@@ -529,6 +546,10 @@ window.dispatchEvent(new CustomEvent('outgoing-call-started', {
 
 
 
+const handleRefresh = useCallback(async () => {
+    await refreshUnread();
+    toast.success('Dashboard refreshed!', { icon: '🔄', duration: 1500 });
+  }, [refreshUnread]);
 
   const handleNavigate = (view) => {
     navigate(VIEW_TO_PATH[view] || '/dashboard');
@@ -548,6 +569,7 @@ window.dispatchEvent(new CustomEvent('outgoing-call-started', {
             onCopyLink={handleCopyLink}
             onCallUser={handleCallUser}
             onNavigate={handleNavigate}
+            onRefresh={handleRefresh}
           />
         );
       case 'chats':

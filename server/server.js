@@ -21,6 +21,7 @@ import userRoutes from './routes/users.js';
 import roomRoutes from './routes/rooms.js';
 import contactsRoutes from './routes/contacts.js';
 import directMessageRoutes from './routes/directMessages.js';
+import adminRoutes from './routes/admin.js';                    // ← NEW
 import { handleSocketConnection } from './socket/handlers.js';
 import { initCloudinary } from './config/cloudinary.js';
 
@@ -87,6 +88,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/direct-messages', directMessageRoutes);
 app.use('/api/contacts', contactsRoutes);
+app.use('/api/admin', adminRoutes);                             // ← NEW
 
 // ─────────────────────────────────────────────
 // Socket Connection Handler

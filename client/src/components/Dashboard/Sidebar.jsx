@@ -5,10 +5,10 @@
 import { useAuth } from '../../context/AuthContext';
 import {
   Home, Users, Settings, History, MessageCircle, UserCircle,
-  ChevronDown, ChevronRight, LogOut, Phone,
+  ChevronDown, ChevronRight, LogOut, Phone, Shield,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-
+import { useNavigate } from 'react-router-dom';
 const NAV = [
   { id: 'meetings',        label: 'Home',            icon: Home,          color: 'text-blue-500'    },
   { id: 'chats',           label: 'Chats',           icon: MessageCircle, color: 'text-violet-500'  },
@@ -33,6 +33,7 @@ const ProfileDropdown = ({ user, onNavigate, onLogout }) => {
   const [status, setStatus] = useState('online');
   const [statusOpen, setStatusOpen] = useState(false);
   const ref = useRef(null);
+
 
   useEffect(() => {
     const handler = (e) => {
@@ -114,6 +115,7 @@ const ProfileDropdown = ({ user, onNavigate, onLogout }) => {
 
 const Sidebar = ({ activeView, onNavigate, notificationCount = 0 }) => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const badgeMap = { chats: notificationCount > 0 ? notificationCount : null };
 
   return (
@@ -140,10 +142,26 @@ const Sidebar = ({ activeView, onNavigate, notificationCount = 0 }) => {
             );
           })}
         </div>
+
+
       </nav>
 
       {/* Profile dropdown pinned to sidebar bottom */}
       <div className="p-3 border-t border-slate-100">
+        {['admin', 'superadmin'].includes(user?.role) && (
+  <div className="mt-4">
+    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-2">Admin</p>
+    <button
+      onClick={() => navigate('/super-admin-dashboard')}
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all bg-violet-50 text-violet-700 hover:bg-violet-100"
+    >
+      <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-violet-100">
+        <Shield className="w-4 h-4 text-violet-600" />
+      </div>
+      <span className="flex-1 text-left">Admin Panel</span>
+    </button>
+  </div>
+)}
         <ProfileDropdown user={user} onNavigate={onNavigate} onLogout={logout} />
       </div>
     </div>

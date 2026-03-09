@@ -32,7 +32,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  // ✅ Added: fields used by Profile.jsx
   email: {
     type: String,
     default: null,
@@ -57,7 +56,18 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
     trim: true
-  }
+  },
+
+  // ─── Admin fields ──────────────────────────────────────────────────────────
+  role:       { type: String, enum: ['user', 'admin', 'superadmin'], default: 'user' },
+  isBanned:   { type: Boolean, default: false },
+  bannedAt:   { type: Date, default: null },
+  bannedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  banReason:  { type: String, default: '' },
+  isMuted:    { type: Boolean, default: false },
+  mutedUntil: { type: Date, default: null },
+  mutedBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+
 }, {
   timestamps: true
 });
@@ -86,7 +96,6 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 // ─── Public profile (exclude password) ────────────────────────────────────────
-// ✅ Added: email, bio, phone, location, company so Profile.jsx can display them
 userSchema.methods.toPublicJSON = function () {
   return {
     _id: this._id,
@@ -99,7 +108,10 @@ userSchema.methods.toPublicJSON = function () {
     bio: this.bio,
     phone: this.phone,
     location: this.location,
-    company: this.company
+    company: this.company,
+    role: this.role,
+    isBanned: this.isBanned,
+    isMuted: this.isMuted
   };
 };
 

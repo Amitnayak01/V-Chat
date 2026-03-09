@@ -21,6 +21,28 @@ import IncomingAudioCall from './components/AudioCall/IncomingAudioCall';
 import AudioCallUI       from './components/AudioCall/AudioCallUI';
 import IncomingCall      from './components/Dashboard/IncomingCall';
 import OutgoingCall      from './components/Dashboard/OutgoingCall';
+
+// ─── Admin imports ────────────────────────────────────────────────────────────
+import AdminLayout         from './components/Admin/AdminLayout';
+import AdminDashboard      from './components/Admin/AdminDashboard';
+import UsersManagement     from './components/Admin/UsersManagement';
+import ChatMonitoring      from './components/Admin/ChatMonitoring';
+import CallsMonitoring     from './components/Admin/CallsMonitoring';
+import RoomsManagement     from './components/Admin/RoomsManagement';
+import ReportsModeration   from './components/Admin/ReportsModeration';
+import AnalyticsDashboard  from './components/Admin/AnalyticsDashboard';
+import SystemHealth        from './components/Admin/SystemHealth';
+import AdminLogs           from './components/Admin/AdminLogs';
+
+// ─── Admin Guard ─────────────────────────────────────────────────────────────
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user)                                       return <Navigate to="/login" replace />;
+  if (!['admin', 'superadmin'].includes(user.role)) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 function GlobalIncomingCall() {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
@@ -31,10 +53,10 @@ function GlobalIncomingCall() {
     if (!socket) return;
 
     socket.on('incoming-call', (data) => setIncomingCall(data));
-socket.on('call-cancelled', ({ callerId }) => {
-  setIncomingCall(prev => prev?.callerId === callerId ? null : prev);
-  toast('Caller cancelled the call', { icon: '📵', duration: 3000 });
-});
+    socket.on('call-cancelled', ({ callerId }) => {
+      setIncomingCall(prev => prev?.callerId === callerId ? null : prev);
+      toast('Caller cancelled the call', { icon: '📵', duration: 3000 });
+    });
     return () => {
       socket.off('incoming-call');
       socket.off('call-cancelled');
@@ -69,28 +91,27 @@ socket.on('call-cancelled', ({ callerId }) => {
     />
   );
 }
+
 function GlobalOutgoingCall() {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
   const navigate         = useNavigate();
   const [outgoingCall, setOutgoingCall] = useState(null);
-  const timerRef       = useRef(null);
-  const outgoingCallRef = useRef(null); // ← ADD: always holds latest value
+  const timerRef        = useRef(null);
+  const outgoingCallRef = useRef(null);
 
-  // Keep ref in sync with state
-  useEffect(() => {
-    outgoingCallRef.current = outgoingCall;
-  }, [outgoingCall]);
-const handleCancel = useCallback((callOverride) => {
-  const call = callOverride || outgoingCallRef.current;
-  if (!call) return;
-  clearTimeout(timerRef.current);
-  emit('cancel-call', { receiverId: call.receiverId, callerId: user?._id });
-  setOutgoingCall(null);
-  outgoingCallRef.current = null;
-  sessionStorage.removeItem('vmeet_calling');
-  window.dispatchEvent(new CustomEvent('outgoing-call-cancelled'));
-}, [emit, user?._id]);
+  useEffect(() => { outgoingCallRef.current = outgoingCall; }, [outgoingCall]);
+
+  const handleCancel = useCallback((callOverride) => {
+    const call = callOverride || outgoingCallRef.current;
+    if (!call) return;
+    clearTimeout(timerRef.current);
+    emit('cancel-call', { receiverId: call.receiverId, callerId: user?._id });
+    setOutgoingCall(null);
+    outgoingCallRef.current = null;
+    sessionStorage.removeItem('vmeet_calling');
+    window.dispatchEvent(new CustomEvent('outgoing-call-cancelled'));
+  }, [emit, user?._id]);
 
   useEffect(() => {
     if (!socket) return;
@@ -129,11 +150,11 @@ const handleCancel = useCallback((callOverride) => {
     const onStart = (e) => {
       const data = e.detail;
       setOutgoingCall(data);
-      outgoingCallRef.current = data; // ← sync ref immediately
+      outgoingCallRef.current = data;
       clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         toast('No answer', { icon: '⏱️', duration: 3000 });
-        handleCancel(data); // ← pass data directly, no stale closure risk
+        handleCancel(data);
       }, 30000);
     };
 
@@ -171,8 +192,11 @@ function App() {
           <AudioCallProvider>
             <Router>
               <Routes>
+                {/* ─── Public ───────────────────────────────────────────── */}
                 <Route path="/login"    element={<Login />} />
                 <Route path="/register" element={<Register />} />
+
+                {/* ─── App ──────────────────────────────────────────────── */}
                 <Route path="/dashboard/*" element={
                   <ProtectedRoute><Dashboard /></ProtectedRoute>
                 } />
@@ -185,6 +209,23 @@ function App() {
                 <Route path="/user/:id" element={
                   <ProtectedRoute><UserProfilePage /></ProtectedRoute>
                 } />
+
+                {/* ─── Admin Panel ──────────────────────────────────────── */}
+                <Route path="/super-admin-dashboard" element={
+                  <AdminRoute><AdminLayout /></AdminRoute>
+                }>
+                  <Route index                element={<AdminDashboard />} />
+                  <Route path="users"         element={<UsersManagement />} />
+                  <Route path="messages"      element={<ChatMonitoring />} />
+                  <Route path="calls"         element={<CallsMonitoring />} />
+                  <Route path="rooms"         element={<RoomsManagement />} />
+                  <Route path="reports"       element={<ReportsModeration />} />
+                  <Route path="analytics"     element={<AnalyticsDashboard />} />
+                  <Route path="health"        element={<SystemHealth />} />
+                  <Route path="logs"          element={<AdminLogs />} />
+                </Route>
+
+                {/* ─── Fallback ─────────────────────────────────────────── */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
