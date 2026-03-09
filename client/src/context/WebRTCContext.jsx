@@ -44,17 +44,10 @@ export const WebRTCProvider = ({ children }) => {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  // Publish a remote stream into React state.
-  // We always create a fresh snapshot object so React sees a state change
-  // and VideoTile's effects re-run — even when the MediaStream ref is the same.
   const publishStream = useCallback((userId, stream) => {
     remoteStreamsRef.current.set(userId, stream);
-    // Spread into a new object every time so every downstream memo/effect
-    // that depends on remoteStreamsObj always sees a new reference.
     setRemoteStreamsObj(() => ({
       ...Object.fromEntries(remoteStreamsRef.current),
-      // Force a new plain-object identity (Object.fromEntries already does this,
-      // but the extra _ts guarantees no bail-out via shallow equality)
       _ts: Date.now(),
     }));
   }, []);
@@ -92,24 +85,15 @@ export const WebRTCProvider = ({ children }) => {
     if (stream) stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
     // ── Incoming remote tracks ────────────────────────────────────────────
-    // We maintain ONE MediaStream per peer in remoteStreamsRef.
-    // Every ontrack event adds the new track into it.
-    //
-    // KEY: we always call publishStream() which creates a fresh object
-    // reference in state so React/VideoTile sees the update even when the
-    // underlying MediaStream object is the same reference.
     pc.ontrack = ({ track, streams }) => {
       console.log(`[WebRTC] ontrack from ${userId}: kind=${track.kind} id=${track.id} streams=${streams?.length}`);
 
-      // Get or create our canonical MediaStream for this peer
       let peerStream = remoteStreamsRef.current.get(userId);
       if (!peerStream) {
         peerStream = new MediaStream();
         remoteStreamsRef.current.set(userId, peerStream);
       }
 
-      // Add track(s) — prefer the browser-provided stream so we get all tracks
-      // that were negotiated together (audio + video in one bundle).
       const addIfMissing = (t) => {
         if (!peerStream.getTracks().find(e => e.id === t.id)) peerStream.addTrack(t);
       };
@@ -117,16 +101,11 @@ export const WebRTCProvider = ({ children }) => {
       if (streams && streams.length > 0) {
         streams[0].getTracks().forEach(addIfMissing);
       } else {
-        // Firefox / older Safari — track arrives directly without a streams array
         addIfMissing(track);
       }
 
-      // Publish immediately — VideoTile uses addtrack events + polling internally,
-      // so a single publish is enough.
       publishStream(userId, peerStream);
 
-      // Re-publish on important track lifecycle changes so VideoTile
-      // re-evaluates hasVideo (e.g. camera toggled off/on remotely).
       track.onended  = () => publishStream(userId, peerStream);
       track.onmute   = () => publishStream(userId, peerStream);
       track.onunmute = () => {
@@ -141,21 +120,17 @@ export const WebRTCProvider = ({ children }) => {
     };
 
     // ── Connection lifecycle ──────────────────────────────────────────────
-      pc.onconnectionstatechange = () => {
+    pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       console.log(`[WebRTC] connection state with ${userId}: ${state}`);
       if (state === 'failed' || state === 'closed') {
-        // Only remove the stream if THIS peer connection is still the
-        // active one for this userId. If a newer peer was created (e.g.
-        // after reconnect), the old closing peer must not wipe the new
-        // stream that was already published by the new peer.
         if (peerConnectionsRef.current.get(userId) === pc) {
           removeRemoteStream(userId);
         }
       }
     };
 
-pc.oniceconnectionstatechange = () => {
+    pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
       console.log(`[WebRTC] ICE state with ${userId}: ${iceState}`);
       if (iceState === 'failed') {
@@ -163,7 +138,6 @@ pc.oniceconnectionstatechange = () => {
         pc.restartIce?.();
       }
       if (iceState === 'disconnected') {
-        // Give browser 4s to self-recover before forcing a restart
         setTimeout(() => {
           if (pc.iceConnectionState === 'disconnected') {
             console.log(`[WebRTC] ICE still disconnected with ${userId} — restarting ICE`);
@@ -188,19 +162,15 @@ pc.oniceconnectionstatechange = () => {
     return { success: true };
   }, []);
 
-  // Per-user lock: prevents two concurrent createOffer calls for the same userId.
-  // This is the last line of defense against duplicate peer connections.
   const offerInProgressRef = useRef(new Set());
 
   const createOffer = useCallback(async (userId, roomId) => {
-    // Deduplicate: if an offer is already in progress for this user, skip.
     if (offerInProgressRef.current.has(userId)) {
       console.log('[WebRTC] createOffer: already in progress for', userId, '— skipping');
       return;
     }
     offerInProgressRef.current.add(userId);
 
-    // Wait up to 5s for local media to be ready before creating offer
     if (!localStreamRef.current) {
       let waited = 0;
       await new Promise(resolve => {
@@ -214,8 +184,6 @@ pc.oniceconnectionstatechange = () => {
       });
     }
 
-    // Close any stale peer connection for this user before creating a new one.
-    // This is the refresh case: remote user rejoined, their old PC is dead.
     const stalePc = peerConnectionsRef.current.get(userId);
     if (stalePc) {
       console.log('[WebRTC] createOffer: closing stale peer for', userId);
@@ -225,7 +193,6 @@ pc.oniceconnectionstatechange = () => {
       stalePc.oniceconnectionstatechange = null;
       try { stalePc.close(); } catch (_) {}
       peerConnectionsRef.current.delete(userId);
-      // Remove stale ICE candidates and remote stream for clean slate
       pendingCandidates.current.delete(userId);
       removeRemoteStream(userId);
     }
@@ -238,12 +205,11 @@ pc.oniceconnectionstatechange = () => {
     } catch (err) {
       console.error('[WebRTC] createOffer:', err);
     } finally {
-      // Release lock so future legitimate offers (e.g. after next refresh) can proceed
       offerInProgressRef.current.delete(userId);
     }
-  }, [createPeer, emit]);
+  }, [createPeer, emit, removeRemoteStream]);
 
-const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
+  const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     const existingPc = peerConnectionsRef.current.get(fromUserId);
 
     if (existingPc) {
@@ -253,8 +219,6 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
                      || ['disconnected', 'failed', 'closed'].includes(iceState);
 
       if (isDead) {
-        // We are the refreshed user — our old PC reference is dead.
-        // Close it cleanly so createPeer() starts completely fresh.
         console.log('[WebRTC] handleOffer: replacing dead peer for', fromUserId);
         existingPc.ontrack                    = null;
         existingPc.onicecandidate             = null;
@@ -266,8 +230,6 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
         removeRemoteStream(fromUserId);
 
       } else if (existingPc.signalingState === 'have-local-offer') {
-        // Glare resolution: both peers tried to offer simultaneously.
-        // Smaller userId backs off and accepts the remote offer instead.
         if (myUserIdRef.current < fromUserId) {
           console.log('[WebRTC] Glare — backing off, accepting remote offer');
           existingPc.close();
@@ -279,7 +241,7 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
       }
     }
 
-        if (!localStreamRef.current) {
+    if (!localStreamRef.current) {
       console.log('[WebRTC] handleOffer: waiting for local media...');
       let waited = 0;
       await new Promise(resolve => {
@@ -303,8 +265,7 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     } catch (err) {
       console.error('[WebRTC] handleOffer:', err);
     }
-  }, [createPeer, emit, flushPendingCandidates]);
-
+  }, [createPeer, emit, flushPendingCandidates, removeRemoteStream]);
 
   const handleAnswer = useCallback(async (fromUserId, answer) => {
     const pc = peerConnectionsRef.current.get(fromUserId);
@@ -312,8 +273,6 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     try {
       if (pc.signalingState === 'have-local-offer') {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        // Flush immediately AND after a tick to catch candidates
-        // that arrived in the same event-loop turn as the answer
         await flushPendingCandidates(fromUserId, pc);
         setTimeout(() => flushPendingCandidates(fromUserId, pc), 0);
       }
@@ -322,12 +281,10 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     }
   }, [flushPendingCandidates]);
 
-
   const handleIceCandidate = useCallback(async (fromUserId, candidate) => {
     if (!candidate) return;
     const pc = peerConnectionsRef.current.get(fromUserId);
     if (!pc || !pc.remoteDescription) {
-      // Queue until remote description is ready
       if (!pendingCandidates.current.has(fromUserId)) {
         pendingCandidates.current.set(fromUserId, []);
       }
@@ -345,7 +302,6 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
 
   // ── Mute controls ──────────────────────────────────────────────────────────
 
-  /** User-initiated toggle — respects isMuted state. */
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -354,11 +310,6 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     setIsMuted(newMuted);
   }, [isMuted]);
 
-  /**
-   * forceMute — called by VideoRoom when the server sends host-muted-all or
-   * host-muted-you. Mutes the audio track regardless of current isMuted state
-   * and updates the UI accordingly.
-   */
   const forceMute = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -366,11 +317,6 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     setIsMuted(true);
   }, []);
 
-  /**
-   * forceUnmute — called by VideoRoom when allowUnmute=true and the user
-   * chooses to unmute after being force-muted. State control stays in
-   * VideoRoom which guards the allowUnmute flag.
-   */
   const forceUnmute = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -431,16 +377,18 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     removeRemoteStream(userId);
   }, [removeRemoteStream]);
 
+  // ── FIX: expose signalingState so callers can detect in-progress negotiations ──
   const getPeerState = useCallback((userId) => {
-  const pc = peerConnectionsRef.current.get(userId);
-  if (!pc) return null;
-  return {
-    connectionState:    pc.connectionState,
-    iceConnectionState: pc.iceConnectionState,
-  };
-}, []);
+    const pc = peerConnectionsRef.current.get(userId);
+    if (!pc) return null;
+    return {
+      connectionState:    pc.connectionState,
+      iceConnectionState: pc.iceConnectionState,
+      signalingState:     pc.signalingState,   // ← NEW: needed to detect live negotiations
+    };
+  }, []);
 
- const cleanup = useCallback(() => {
+  const cleanup = useCallback(() => {
     peerConnectionsRef.current.forEach(pc => {
       pc.ontrack                    = null;
       pc.onicecandidate             = null;
@@ -456,7 +404,6 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
 
-    // Reset userId so next call starts fresh
     myUserIdRef.current = null;
 
     setLocalStream(null);
