@@ -293,9 +293,19 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
       });
     }
 
-    const pc = createPeer(fromUserId);
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+ 
+// If media never became available after waiting, abort.
+// Creating a peer with no tracks sends a trackless answer
+// which is why the refreshed user appeared black/silent.
+if (!localStreamRef.current) {
+  console.error('[WebRTC] handleOffer: local stream unavailable — aborting');
+  return;
+}
+
+const pc = createPeer(fromUserId);
+try {
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
       await flushPendingCandidates(fromUserId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
