@@ -255,17 +255,19 @@ const { user }     = useAuth();
 
     const handlers = {
       'connect': () => {
-        // Socket reconnected mid-call — re-announce presence to the room
-        if (hasJoined.current) {
-          emit('join-room', {
-            roomId,
-            userId:   user._id,
-            username: user.username,
-            avatar:   user.avatar,
-          });
-        }
-      },
-  
+  if (hasJoined.current) {
+    setTimeout(() => {
+      emit('join-room', {
+        roomId,
+        userId:   user._id,
+        username: user.username,
+        avatar:   user.avatar,
+      });
+    }, 300);
+  }
+},
+
+
 'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
         otherJoinedRef.current = true;
         if (noAnswerTimerRef.current) {
@@ -282,22 +284,19 @@ const { user }     = useAuth();
           console.log('[VideoRoom] user-joined skipped — offer already pending for', userId);
           return;
         }
-
-        if (isRejoin) {
-          console.log('[VideoRoom] user-joined isRejoin — delaying offer for', userId);
-          pendingOfferRef.current.add(userId);
-          setTimeout(() => {
-            pendingOfferRef.current.delete(userId);
-            createOffer(userId);
-          }, 800);
-        } else {
+if (isRejoin) {
+  console.log('[VideoRoom] user-joined isRejoin — delaying offer for', userId);
+  pendingOfferRef.current.add(userId);
+  setTimeout(() => {
+    pendingOfferRef.current.delete(userId);
+    if (!recentReconnectsRef.current.has(userId)) {
+      createOffer(userId);
+    }
+  }, 800);
+}else {
           createOffer(userId);
         }
       },
-
-
-
-
       'user-left': ({ userId }) => {
         const leaving = participantsRef.current.find(p => (p.userId ?? p) === userId);
         const name    = leaving?.username ?? 'Someone';
@@ -355,14 +354,9 @@ const { user }     = useAuth();
 
       'user-reconnected': ({ userId, username, participants: updated }) => {
         console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
-
         recentReconnectsRef.current.add(userId);
-        setTimeout(() => recentReconnectsRef.current.delete(userId), 2000);
-
-        // Grab the offer lock immediately so any delayed user-joined
-        // timer already in flight sees it and aborts
+        setTimeout(() => recentReconnectsRef.current.delete(userId), 5000);
         pendingOfferRef.current.add(userId);
-
         setIsReconnecting(false);
         otherJoinedRef.current = true;
         if (updated) setParticipants(updated);
