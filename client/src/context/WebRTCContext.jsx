@@ -260,10 +260,16 @@ if (!localStreamRef.current) {
   console.error('[WebRTC] handleOffer: local media unavailable after 5s — aborting');
   return;
 }
+// Abort if media never became available — prevents trackless peer connections
+if (!localStreamRef.current) {
+  console.error('[WebRTC] handleOffer: no local stream after wait — aborting');
+  return;
+}
 
 const pc = createPeer(fromUserId);
 try {
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
       await flushPendingCandidates(fromUserId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);

@@ -244,31 +244,19 @@ const VideoRoom = () => {
       // ── FIX 2: proactive-offer in connect handler uses isPeerAlive ────────
       // Previously: `state.connectionState !== 'connected'` — this incorrectly
       // treated 'connecting' (ICE in progress) as dead and sent a disruptive offer.
-      'connect': () => {
-        if (hasJoined.current) {
-          setTimeout(() => {
-            emit('join-room', {
-              roomId,
-              userId:   user._id,
-              username: user.username,
-              avatar:   user.avatar,
-            });
-          }, 300);
-
-          setTimeout(() => {
-            participantsRef.current
-              .filter(p => (p.userId ?? p) !== user._id)
-              .forEach(p => {
-                const uid = p.userId ?? p;
-                // Only offer if the peer is genuinely dead — not mid-ICE-negotiation
-                if (!isPeerAlive(uid)) {
-                  console.log('[VideoRoom] connect fallback: proactive offer →', uid);
-                  createOffer(uid, roomId);
-                }
-              });
-          }, 3000);
-        }
-      },
+'connect': () => {
+  if (hasJoined.current) {
+    setTimeout(() => {
+      emit('join-room', {
+        roomId,
+        userId:   user._id,
+        username: user.username,
+        avatar:   user.avatar,
+      });
+    }, 300);
+    // No proactive offer — peer A will send offer via user-reconnected handler
+  }
+},
 
       'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
         otherJoinedRef.current = true;
@@ -350,26 +338,30 @@ const VideoRoom = () => {
       },
 
       // ── FIX 3: pass roomId to createOffer + use isPeerAlive in rejoin-ack ─
-      'user-reconnected': ({ userId, username, participants: updated }) => {
-        console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
-        recentReconnectsRef.current.add(userId);
-        setTimeout(() => recentReconnectsRef.current.delete(userId), 5000);
-        pendingOfferRef.current.add(userId);
-        setIsReconnecting(false);
-        otherJoinedRef.current = true;
-        if (updated) setParticipants(updated);
-        handlePeerDisconnect(userId);
+   'user-reconnected': ({ userId, username, participants: updated }) => {
+  console.log('[VideoRoom] user-reconnected — fresh offer for', userId);
+  recentReconnectsRef.current.add(userId);
+  setTimeout(() => recentReconnectsRef.current.delete(userId), 8000);
+  pendingOfferRef.current.add(userId);
+  setIsReconnecting(false);
+  otherJoinedRef.current = true;
+  if (updated) setParticipants(updated);
 
-        setTimeout(() => {
-          pendingOfferRef.current.delete(userId);
-          // FIX: was createOffer(userId) — missing roomId meant offer payload
-          // had roomId: undefined, which is benign for routing but incorrect.
-          createOffer(userId, roomId);
-        }, 800);
+  // Close stale peer connection first
+  handlePeerDisconnect(userId);
 
-        pushEvent('user-reconnected', { username });
-        toast(`${username} reconnected`, { icon: '🔄' });
-      },
+  // Wait for the refreshed user's media to be ready before offering
+  setTimeout(() => {
+    pendingOfferRef.current.delete(userId);
+    console.log('[VideoRoom] user-reconnected: sending fresh offer to', userId);
+    createOffer(userId, roomId);
+    // NOTE: no recentReconnects check here — we ALWAYS want to offer
+    // after user-reconnected, it's the sole trigger for renegotiation
+  }, 1500);
+
+  pushEvent('user-reconnected', { username });
+  toast(`${username} reconnected`, { icon: '🔄' });
+},
 
       // ── FIX 4: room-rejoin-ack — longer timeout + isPeerAlive check ───────
       // ROOT CAUSE OF THE BUG: the previous 2500ms timeout fired while ICE was
@@ -380,26 +372,13 @@ const VideoRoom = () => {
       // (the refreshed user's tracks never reached the other participant).
       // FIX: use isPeerAlive() which treats 'connecting'/'checking' as alive,
       // and increase the timeout to 6000ms so ICE has time to complete first.
-      'room-rejoin-ack': ({ roomId: ack, members }) => {
-        if (ack !== roomId) return;
-        setIsReconnecting(false);
-        setParticipants(members);
-
-        const others = members.filter(m => (m.userId ?? m) !== user._id);
-        if (others.length > 0) {
-          setTimeout(() => {
-            others.forEach(m => {
-              const uid = m.userId ?? m;
-              // isPeerAlive returns false only if the peer is genuinely dead.
-              // A peer in 'connecting'/'checking' is mid-ICE — leave it alone.
-              if (!isPeerAlive(uid)) {
-                console.log('[VideoRoom] rejoin-ack fallback: proactive offer →', uid);
-                createOffer(uid, roomId);
-              }
-            });
-          }, 6000); // was 2500ms — increased so ICE (2–5s) completes before we check
-        }
-      },
+ 'room-rejoin-ack': ({ roomId: ack, members }) => {
+  if (ack !== roomId) return;
+  setIsReconnecting(false);
+  setParticipants(members);
+  // Peer A handles renegotiation via user-reconnected → createOffer.
+  // We only answer. No offer from our side needed here.
+},
 
       // WebRTC signalling
       'webrtc-offer':         ({ offer, from })     => handleOffer(from, roomId, offer),
