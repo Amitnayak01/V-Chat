@@ -16,8 +16,7 @@ const NAV_ITEMS = [
   { to: '/super-admin-dashboard/reports',   icon: Flag,            label: 'Reports' },
   { to: '/super-admin-dashboard/analytics', icon: BarChart3,       label: 'Analytics' },
   { to: '/super-admin-dashboard/health',    icon: Activity,        label: 'System Health' },
-  { to: '/super-admin-dashboard/logs',      icon: ScrollText,      label: 'Admin Logs' },
-  { to: '/super-admin-dashboard/logs',      icon: ScrollText,  label: 'Admin Logs' },
+ { to: '/super-admin-dashboard/logs',      icon: ScrollText,  label: 'Admin Logs' },
   { to: '/super-admin-dashboard/support',   icon: Headphones,  label: 'Support' },
 ];
 
