@@ -5,7 +5,7 @@
 import { useAuth } from '../../context/AuthContext';
 import {
   Home, Users, Settings, History, MessageCircle, UserCircle,
-  ChevronDown, ChevronRight, LogOut, Phone, Shield,
+  ChevronDown, ChevronRight, LogOut, Phone, Shield, Headphones,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +19,7 @@ const NAV = [
   { id: 'contacts',        label: 'Contacts',        icon: Users,         color: 'text-emerald-500' },
   { id: 'profile',         label: 'Profile',         icon: UserCircle,    color: 'text-pink-500'    },
   { id: 'settings',        label: 'Settings',        icon: Settings,      color: 'text-slate-500'   },
+  { id: 'support',         label: 'Support',         icon: Headphones,    color: 'text-indigo-500'  },
 ];
 
 const STATUSES = [

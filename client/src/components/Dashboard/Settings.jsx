@@ -9,7 +9,6 @@ import { SoundEngine, RINGTONE_OPTIONS, MESSAGE_TONE_OPTIONS,
          getCustomRingtone, setCustomRingtone, fileToDataUrl } from '../../utils/SoundEngine';
 import { useSoundSettings } from '../../hooks/useSoundSettings';
 
-/* ─── DESIGN TOKENS ──────────────────────────────── */
 const C = {
   bg:       '#F0F2F5',
   surface:  '#FFFFFF',
@@ -46,10 +45,6 @@ const C = {
 const SPR  = { type: 'spring', stiffness: 480, damping: 36 };
 const EASE = { duration: 0.22, ease: [0.4, 0, 0.2, 1] };
 const UP   = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: EASE } };
-
-/* ══════════════════════════════════════════════════════
-   SOUND SETTINGS SECTION
-══════════════════════════════════════════════════════ */
 
 const SOUND_TABS = [
   { id: 'audio',   label: 'Audio Call', Icon: Music,         accent: '#059669', accentL: '#ECFDF5', accentBd: '#A7F3D0' },
@@ -343,7 +338,6 @@ const RingPanel = ({ tabId, ringOptions, selectedId, onSelect, volume, onVolume,
   );
 };
 
-/* ─── CARD ───────────────────────────────────────── */
 const Card = ({ children }) => (
   <motion.section
     variants={UP}
@@ -359,7 +353,6 @@ const Card = ({ children }) => (
   </motion.section>
 );
 
-/* ─── CARD HEAD ──────────────────────────────────── */
 const CH = ({ icon: Icon, title, subtitle, iColor, iBg }) => (
   <div style={{
     display: 'flex', alignItems: 'center', gap: 14, padding: '16px 22px',
@@ -379,9 +372,6 @@ const CH = ({ icon: Icon, title, subtitle, iColor, iBg }) => (
   </div>
 );
 
-/* ══════════════════════════════════════════════════════
-   SOUND SETTINGS CARD
-══════════════════════════════════════════════════════ */
 const SoundSettingsCard = () => {
   const { settings, update, reset } = useSoundSettings();
   const [activeTab, setActiveTab]   = useState('audio');
@@ -457,9 +447,6 @@ const SoundSettingsCard = () => {
   );
 };
 
-/* ══════════════════════════════════════════════════════
-   MAIN EXPORT
-══════════════════════════════════════════════════════ */
 export default function Settings() {
   return (
     <>
@@ -469,7 +456,6 @@ export default function Settings() {
         html { -webkit-tap-highlight-color: transparent; }
         .vs { font-family: 'DM Sans', system-ui, -apple-system, sans-serif; font-size: 14px; color: #0D1117; }
         @keyframes spin  { to { transform: rotate(360deg); } }
-
         input[type=range]::-webkit-slider-thumb {
           -webkit-appearance: none;
           width: 16px; height: 16px; border-radius: 50%;
@@ -482,10 +468,11 @@ export default function Settings() {
           box-shadow: 0 0 0 3px rgba(37,99,235,.18); cursor: pointer;
         }
       `}</style>
-
       <div className="vs" style={{ minHeight: '100vh', background: C.bg }}>
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '44px 28px 60px' }}>
-          <SoundSettingsCard />
+          <motion.div variants={{ show: { transition: { staggerChildren: 0.08 } } }} initial="hidden" animate="show">
+            <SoundSettingsCard />
+          </motion.div>
         </div>
       </div>
     </>

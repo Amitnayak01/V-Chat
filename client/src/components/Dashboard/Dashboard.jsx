@@ -17,6 +17,7 @@ import CallHistory    from './CallHistory';
 import Chat           from './Chat';
 import Profile        from './Profile';
 import Settings       from './Settings';
+import SupportChat    from './SupportChat';  
 
 import { useAuth }            from '../../context/AuthContext';
 import { useSocket }          from '../../context/SocketContext';
@@ -35,6 +36,9 @@ const VIEW_TO_PATH = {
   contacts:          '/dashboard/contacts',
   profile:           '/dashboard/profile',
   settings:          '/dashboard/settings',
+  support:           '/dashboard/support',    // ← ADD
+
+
 };
 
 const PATH_TO_VIEW = Object.fromEntries(
@@ -589,6 +593,8 @@ const handleRefresh = useCallback(async () => {
         return <Profile />;
       case 'settings':
         return <Settings />;
+         case 'support':                          // ← ADD
+        return <SupportChat />;                // ← ADD
       default:
         return null;
     }

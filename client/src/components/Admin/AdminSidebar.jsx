@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, MessageSquare, Phone,
   Video, Flag, BarChart3, Activity, ScrollText,
-  ChevronLeft, Shield, LogOut, Zap
+  ChevronLeft, Shield, LogOut, Zap, Headphones,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -17,6 +17,8 @@ const NAV_ITEMS = [
   { to: '/super-admin-dashboard/analytics', icon: BarChart3,       label: 'Analytics' },
   { to: '/super-admin-dashboard/health',    icon: Activity,        label: 'System Health' },
   { to: '/super-admin-dashboard/logs',      icon: ScrollText,      label: 'Admin Logs' },
+  { to: '/super-admin-dashboard/logs',      icon: ScrollText,  label: 'Admin Logs' },
+  { to: '/super-admin-dashboard/support',   icon: Headphones,  label: 'Support' },
 ];
 
 export default function AdminSidebar({ open, onClose }) {
@@ -48,7 +50,7 @@ export default function AdminSidebar({ open, onClose }) {
         `}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-white/5 min-w-[16rem] lg:min-w-0">
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-white/5">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center flex-shrink-0">
             <Shield className="w-4 h-4 text-white" />
           </div>
@@ -61,7 +63,7 @@ export default function AdminSidebar({ open, onClose }) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-4 overflow-y-auto min-w-[16rem] lg:min-w-0">
+        <nav className="flex-1 py-4 overflow-y-auto">
           {NAV_ITEMS.map(({ to, icon: Icon, label, exact }) => (
             <NavLink
               key={to}
@@ -82,7 +84,7 @@ export default function AdminSidebar({ open, onClose }) {
         </nav>
 
         {/* Bottom: quick link back + logout */}
-        <div className="border-t border-white/5 p-3 min-w-[16rem] lg:min-w-0 space-y-1">
+        <div className="border-t border-white/5 p-3 space-y-1">
           <button
             onClick={() => navigate('/dashboard')}
             className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm text-white/40 hover:text-white hover:bg-white/5 transition-all"
