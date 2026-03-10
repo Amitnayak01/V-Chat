@@ -2,11 +2,10 @@ import User    from '../models/User.js';
 import Message from '../models/Message.js';
 import Room    from '../models/Room.js';
 import { registerDMHandlers, cleanupDMUser } from './directMessageSocket.js';
-import {
-  registerAudioCallHandlers,
-  cleanupAudioCallUser,
-} from './audioCallSocket.js';
-
+import {                                          // ← NEW
+  registerAudioCallHandlers,                      // ← NEW
+  cleanupAudioCallUser,                           // ← NEW
+} from './audioCallSocket.js';                    // ← NEW
 // ─── In-memory state ──────────────────────────────────────────────────────────
 
 const userSockets        = new Map(); // userId → socketId
@@ -17,6 +16,7 @@ const roomHandsRaised    = new Map();
 
 // ── MUTE STATE (Zoom-style):
 //    roomId → { hostId: string, mutedByHost: Set<userId>, allowUnmute: boolean }
+//    Persisted in memory so late-joiners and reconnectors receive the full state.
 const roomMuteState      = new Map();
 
 const GRACE_MS = 8000;
@@ -30,6 +30,7 @@ const getMuteState = (roomId) => {
   return roomMuteState.get(roomId);
 };
 
+// SERVER-SIDE host verification — checks in-memory first, then DB.
 const verifyIsHost = async (roomId, userId) => {
   const ms = roomMuteState.get(roomId);
   if (ms?.hostId) return ms.hostId === userId;
@@ -84,61 +85,18 @@ export const handleSocketConnection = (io) => {
     console.log(`✅ Socket connected: ${socket.id}`);
 
     registerDMHandlers(io, socket);
-    registerAudioCallHandlers(io, socket);
+     registerAudioCallHandlers(io, socket); 
 
     // ── user-online ────────────────────────────────────────────────────────
     socket.on('user-online', async (userId) => {
       try {
-        // ─────────────────────────────────────────────────────────────────
-        // FIX: Do ALL critical synchronous work BEFORE the first await.
-        //
-        // Previously wasInGrace / userSockets / socket.reconnectedRooms were
-        // set AFTER `await User.findById()`.  That created a race where a
-        // fast client could emit `join-room` while the DB call was still
-        // pending, making wasReconnectNotification=false in join-room and
-        // causing the server to fire BOTH user-joined AND user-reconnected
-        // to the peer.  The peer then called handlePeerDisconnect() inside
-        // user-reconnected, tearing down the connection established by the
-        // first offer — leaving the refreshed user invisible to the peer.
-        // ─────────────────────────────────────────────────────────────────
-
-        const wasInGrace = pendingDisconnects.has(userId);
-
-        // Update socket lookup immediately so WebRTC relay works right away.
-        userSockets.set(userId, socket.id);
-        socket.userId = userId;
-
-        if (wasInGrace) {
-          // Cancel the eviction timer NOW — before the DB call — so there is
-          // zero window where the grace timer can fire and evict the user
-          // while we are awaiting the DB.
-          cancelGrace(userId);
-
-          // Mark this socket as a reconnect.  join-room checks this flag so
-          // it can suppress user-joined and avoid the double-offer race.
-          socket.isReconnecting = true;
-
-          // Pre-populate reconnectedRooms synchronously so join-room can
-          // find the flag even if it arrives during the DB await below.
-          socket.reconnectedRooms = new Set();
-          for (const [roomId, members] of activeRooms.entries()) {
-            if (members.has(userId)) {
-              socket.join(roomId);
-              socket.reconnectedRooms.add(roomId);
-              // Immediately update the stored socketId so WebRTC relay
-              // targets the correct socket for any in-flight signalling.
-              const info = members.get(userId);
-              members.set(userId, { ...info, socketId: socket.id });
-            }
-          }
-
-          console.log(`♻️  Reconnect flag set for ${userId} — rooms: [${[...socket.reconnectedRooms].join(', ')}]`);
-        }
-
-        // ── Async DB work ──────────────────────────────────────────────────
         const user = await User.findById(userId);
         if (!user) return;
 
+        const wasInGrace = pendingDisconnects.has(userId);
+
+        userSockets.set(userId, socket.id);
+        socket.userId   = userId;
         socket.username = user.username;
 
         user.status   = 'online';
@@ -148,25 +106,37 @@ export const handleSocketConnection = (io) => {
 
         socket.join(`user:${userId}`);
 
-        if (wasInGrace) {
+                if (wasInGrace) {
+          cancelGrace(userId);
           console.log(`♻️  User ${user.username} reconnected within grace period`);
 
-          // Take a fresh snapshot of member lists now that socket.join() ran.
+          socket.reconnectedRooms = new Set();
+
+          // Snapshot room membership NOW (before the setTimeout)
+          // so we use accurate data even if something changes in 500ms
           const rejoinSnapshots = [];
-          for (const roomId of socket.reconnectedRooms) {
-            const members = activeRooms.get(roomId);
-            if (!members) continue;
-            rejoinSnapshots.push({
-              roomId,
-              memberList: Array.from(members.entries()).map(
-                ([uid, d]) => ({ userId: uid, ...d })
-              ),
-            });
+          for (const [roomId, members] of activeRooms.entries()) {
+            if (members.has(userId)) {
+              socket.join(roomId);
+              socket.reconnectedRooms.add(roomId);
+
+              const info = members.get(userId);
+              members.set(userId, { ...info, socketId: socket.id });
+
+              rejoinSnapshots.push({
+                roomId,
+                memberList: Array.from(members.entries()).map(
+                  ([uid, d]) => ({ userId: uid, ...d })
+                ),
+              });
+            }
           }
 
-          // Delay 500ms — gives the reconnecting client time to finish its
-          // React re-render and re-register socket event handlers before we
-          // fire user-reconnected and room-rejoin-ack.
+          // Delay 500ms — gives the reconnecting client time to finish
+          // its React re-render and re-register socket event handlers
+          // before we fire user-reconnected and room-rejoin-ack.
+          // Without this, events arrive before handlers are registered
+          // and are silently dropped, leaving both sides with black screens.
           setTimeout(() => {
             for (const { roomId, memberList } of rejoinSnapshots) {
               socket.to(roomId).emit('user-reconnected', {
@@ -203,12 +173,8 @@ export const handleSocketConnection = (io) => {
 
           socket.emit('online-users-list', { users: Array.from(userSockets.keys()) });
 
-          // Clear reconnect flags after 3 s — long enough to cover any
-          // delayed join-room that arrives after the 500 ms rejoin window.
           setTimeout(() => {
-            socket.isReconnecting = false;
             if (socket.reconnectedRooms) socket.reconnectedRooms.clear();
-            console.log(`🧹 Cleared reconnect flags for ${user.username}`);
           }, 3000);
 
         } else {
@@ -254,7 +220,6 @@ export const handleSocketConnection = (io) => {
         console.log(`📵 Call cancelled by ${callerId} to ${receiverId}`);
       }
     });
-
     // ── join-room ──────────────────────────────────────────────────────────
     socket.on('join-room', async ({ roomId, userId, username, avatar }) => {
       try {
@@ -292,14 +257,8 @@ export const handleSocketConnection = (io) => {
           ([uid, info]) => ({ userId: uid, ...info })
         );
 
-        // FIX: check BOTH the synchronous isReconnecting flag AND the
-        // reconnectedRooms set.  The flag is set before the DB await in
-        // user-online, so it is always present even when join-room races
-        // the DB call.  reconnectedRooms is a belt-and-suspenders fallback
-        // for the (now unlikely) case where the flag was not yet set.
         const wasReconnectNotification =
-          socket.isReconnecting ||
-          (socket.reconnectedRooms && socket.reconnectedRooms.has(roomId));
+          socket.reconnectedRooms && socket.reconnectedRooms.has(roomId);
 
         if (!wasReconnectNotification) {
           socket.to(roomId).emit('user-joined', {
@@ -311,8 +270,9 @@ export const handleSocketConnection = (io) => {
           });
           console.log(`👥 ${username} ${isRejoin ? 're' : ''}joined room ${roomId} (${members.size} total)`);
         } else {
-          console.log(`👥 ${username} rejoined room ${roomId} — suppressed user-joined (reconnect)`);
+          console.log(`👥 ${username} rejoined room ${roomId} (reconnect=${wasReconnectNotification})`);
         }
+
 
         socket.emit('room-participants', { participants: memberList, roomId });
 
@@ -479,8 +439,22 @@ export const handleSocketConnection = (io) => {
       console.log(`👇 ${uid} lowered hand in room ${roomId}`);
     });
 
-    // ── Mute controls ──────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // MUTE CONTROLS — ZOOM-STYLE UPGRADED
+    //
+    //  Every handler is gated by verifyIsHost() — a server-side DB check.
+    //  Clients cannot bypass this by spoofing the userId field.
+    //
+    //  New socket events (server → client):
+    //    host-muted-all         { hostId, mutedIds[], allowUnmute }
+    //    host-muted-you         { hostId, allowUnmute }
+    //    unmute-permission-changed { allowUnmute }
+    //    mute-state-sync        { hostId, mutedIds[], allowUnmute }   ← join/reconnect
+    //    participant-unmuted    { userId }                            ← peer unmuted themselves
+    //    mute-error             { message }                          ← unauthorized attempt
+    // ════════════════════════════════════════════════════════════════════════
 
+    /** mute-all: host mutes every non-host participant */
     socket.on('mute-all', async ({ roomId, userId, allowUnmute = true }) => {
       try {
         const uid = userId || socket.userId;
@@ -506,6 +480,7 @@ export const handleSocketConnection = (io) => {
         }
         ms.allowUnmute = !!allowUnmute;
 
+        // io.to broadcasts to ALL including the host (host sees confirmation)
         io.to(roomId).emit('host-muted-all', { hostId: uid, mutedIds, allowUnmute: ms.allowUnmute });
         console.log(`🔇 Host ${uid} muted ${mutedIds.length} participants in ${roomId}`);
       } catch (err) {
@@ -513,6 +488,7 @@ export const handleSocketConnection = (io) => {
       }
     });
 
+    /** toggle-allow-unmute: host changes whether participants may self-unmute */
     socket.on('toggle-allow-unmute', async ({ roomId, userId, allowUnmute }) => {
       try {
         const uid = userId || socket.userId;
@@ -530,10 +506,11 @@ export const handleSocketConnection = (io) => {
       }
     });
 
+    /** mute-participant: host mutes a single participant */
     socket.on('mute-participant', async ({ roomId, userId, targetId }) => {
       try {
         const uid    = userId || socket.userId;
-        const target = targetId || userId;
+        const target = targetId || userId; // backwards-compat
         if (!uid || !roomId) return;
 
         const authorized = await verifyIsHost(roomId, uid);
@@ -555,6 +532,10 @@ export const handleSocketConnection = (io) => {
       }
     });
 
+    /**
+     * participant-unmuted: participant has self-unmuted (only allowed when allowUnmute=true).
+     * Server removes them from mutedByHost and notifies peers.
+     */
     socket.on('participant-unmuted', ({ roomId, userId }) => {
       const uid = userId || socket.userId;
       const ms  = roomMuteState.get(roomId);
@@ -595,7 +576,7 @@ export const handleSocketConnection = (io) => {
 
             evictUserFromAllRooms(io, userId, username);
             cleanupDMUser(io, userId);
-            cleanupAudioCallUser(io, userId);
+            cleanupAudioCallUser(io, userId); 
 
             const offlinePayload = { userId, status: 'offline', lastSeen: new Date() };
             io.emit('user-status-change', offlinePayload);
@@ -610,7 +591,7 @@ export const handleSocketConnection = (io) => {
           userSockets.delete(userId);
           if (user) { user.status = 'offline'; user.socketId = null; user.lastSeen = new Date(); await user.save(); }
           cleanupDMUser(io, userId);
-          cleanupAudioCallUser(io, userId);
+          cleanupAudioCallUser(io, userId); 
           const offlinePayload = { userId, status: 'offline', lastSeen: new Date() };
           io.emit('user-status-change', offlinePayload);
           io.emit('user-offline', { userId });

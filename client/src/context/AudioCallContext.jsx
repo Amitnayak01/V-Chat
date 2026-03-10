@@ -39,82 +39,17 @@ export const useAudioCall = () => {
 
 const AUDIO_CONSTRAINTS = {
   audio: {
-    // Use { ideal } wrappers — bare booleans are often silently ignored
-    echoCancellation: { ideal: true },
-    noiseSuppression: { ideal: true },
-    autoGainControl:  { ideal: true },
-    // Opus works at 48 kHz; { ideal } lets browser fall back gracefully
-    sampleRate:       { ideal: 48000 },
-    sampleSize:       { ideal: 16 },
-    channelCount:     { ideal: 1 },    // mono: halves bandwidth, eliminates stereo echo
-    latency:          { ideal: 0.01 }, // 10 ms target
+    echoCancellation:  true,
+    noiseSuppression:  true,
+    autoGainControl:   true,
+    sampleRate:        48000,
+    channelCount:      1,
   },
   video: false,
 };
 
-
-// ─── Opus SDP helpers ────────────────────────────────────────────────────────
-// Reorders codecs so Opus 48000 is first, then injects optimal fmtp params:
-//   minptime=10   — minimum packet time (reduces overhead)
-//   useinbandfec=1 — in-band Forward Error Correction (recovers from packet loss)
-//   usedtx=1       — Discontinuous Transmission (saves bandwidth during silence)
-//   stereo=0       — force mono (critical: stereo doubles bitrate for no benefit)
-//   maxaveragebitrate=40000 — 40 kbps is excellent for voice; browser default can be 8 kbps
-
-function _getOpusPayload(lines) {
-  for (const line of lines) {
-    const m = line.match(/a=rtpmap:(\d+) opus\/48000/i);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-function _preferOpus(sdp) {
-  const lines = sdp.split('\r\n');
-  const payload = _getOpusPayload(lines);
-  if (!payload) return sdp;
-
-  // 1. Reorder m=audio codec list so Opus payload is first
-  const reordered = lines.map((line) => {
-    if (!line.startsWith('m=audio')) return line;
-    const parts  = line.split(' ');
-    const codecs = parts.slice(3).filter((c) => c !== payload);
-    return [...parts.slice(0, 3), payload, ...codecs].join(' ');
-  });
-
-  // 2. Set or replace fmtp line for Opus
-  const fmtp = `a=fmtp:${payload} minptime=10;useinbandfec=1;usedtx=1;stereo=0;maxaveragebitrate=40000`;
-  const existingIdx = reordered.findIndex((l) => l.startsWith(`a=fmtp:${payload}`));
-  if (existingIdx !== -1) {
-    reordered[existingIdx] = fmtp;
-  } else {
-    const rtpIdx = reordered.findIndex((l) => l.includes(`a=rtpmap:${payload}`));
-    if (rtpIdx !== -1) reordered.splice(rtpIdx + 1, 0, fmtp);
-  }
-
-  return reordered.join('\r\n');
-}
-
-// Raises the RTCRtpSender bitrate for an audio track to 40 kbps
-// (browser default can be as low as 8 kbps — causes distortion under load)
-async function _setAudioSenderBitrate(sender) {
-  try {
-    const params = sender.getParameters();
-    if (!params.encodings || params.encodings.length === 0) {
-      params.encodings = [{}];
-    }
-    params.encodings[0].maxBitrate    = 40000; // 40 kbps
-    params.encodings[0].priority      = 'high';
-    params.encodings[0].networkPriority = 'high';
-    await sender.setParameters(params);
-  } catch (e) {
-    // setParameters is not supported on all browsers — safe to ignore
-    console.warn('[AudioCall] setParameters not supported:', e.message);
-  }
-}
-
-
 // makeRingtone() removed — SoundEngine handles all tone synthesis.
+
 export const AudioCallProvider = ({ children }) => {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
@@ -203,15 +138,8 @@ export const AudioCallProvider = ({ children }) => {
       peerConnectionsRef.current.delete(userId);
     }
     const pc = new RTCPeerConnection(WEBRTC_CONFIG);
-   
     const stream = localStreamRef.current;
-if (stream) {
-  stream.getAudioTracks().forEach((t) => {
-    const sender = pc.addTrack(t, stream);
-    // Raise bitrate immediately — don't wait for negotiation
-    _setAudioSenderBitrate(sender);
-  });
-}
+    if (stream) stream.getAudioTracks().forEach((t) => pc.addTrack(t, stream));
 
     pc.ontrack = ({ track, streams }) => {
       let peerStream = remoteStreamsRef.current.get(userId);
@@ -243,24 +171,20 @@ if (stream) {
   const createAudioOffer = useCallback(async (userId) => {
     const pc = createAudioPeer(userId);
     try {
-     
-      const rawOffer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
-const offer    = new RTCSessionDescription({ type: rawOffer.type, sdp: _preferOpus(rawOffer.sdp) });
-await pc.setLocalDescription(offer);
-emit('audio-webrtc-offer', { offer, to: userId, from: user?._id });
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+      await pc.setLocalDescription(offer);
+      emit('audio-webrtc-offer', { offer, to: userId, from: user?._id });
     } catch (err) { console.error('[AudioCall] createAudioOffer:', err); }
   }, [createAudioPeer, emit, user]);
 
   const handleAudioOffer = useCallback(async (fromUserId, offer) => {
     const pc = createAudioPeer(fromUserId);
     try {
-    await pc.setRemoteDescription(new RTCSessionDescription({ type: offer.type, sdp: _preferOpus(offer.sdp) }));
-await flushPendingCandidates(fromUserId, pc);
-const rawAnswer = await pc.createAnswer();
-const answer    = new RTCSessionDescription({ type: rawAnswer.type, sdp: _preferOpus(rawAnswer.sdp) });
-await pc.setLocalDescription(answer);
-emit('audio-webrtc-answer', { answer, to: fromUserId, from: user?._id });
-
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await flushPendingCandidates(fromUserId, pc);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      emit('audio-webrtc-answer', { answer, to: fromUserId, from: user?._id });
     } catch (err) { console.error('[AudioCall] handleAudioOffer:', err); }
   }, [createAudioPeer, emit, user, flushPendingCandidates]);
 
@@ -268,11 +192,8 @@ emit('audio-webrtc-answer', { answer, to: fromUserId, from: user?._id });
     const pc = peerConnectionsRef.current.get(fromUserId);
     if (!pc) return;
     try {
-    
-if (pc.signalingState === 'have-local-offer') {
-  await pc.setRemoteDescription(new RTCSessionDescription({ type: answer.type, sdp: _preferOpus(answer.sdp) }));
-
-
+      if (pc.signalingState === 'have-local-offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
         await flushPendingCandidates(fromUserId, pc);
       }
     } catch (err) { console.error('[AudioCall] handleAudioAnswer:', err); }

@@ -254,20 +254,17 @@ const { user }     = useAuth();
     if (!socket) return;
 
     const handlers = {
-    
-
       'connect': () => {
-  setIsReconnecting(false);
-  if (hasJoined.current) {
-    console.log('[VideoRoom] socket reconnected mid-call — rejoining room', roomId);
-    emit('join-room', {
-      roomId,
-      userId:   user._id,
-      username: user.username,
-      avatar:   user.avatar,
-    });
-  }
-},
+        // Socket reconnected mid-call — re-announce presence to the room
+        if (hasJoined.current) {
+          emit('join-room', {
+            roomId,
+            userId:   user._id,
+            username: user.username,
+            avatar:   user.avatar,
+          });
+        }
+      },
   
 'user-joined': ({ userId, username, isRejoin, participants: updated }) => {
         otherJoinedRef.current = true;
@@ -380,22 +377,12 @@ const { user }     = useAuth();
         toast(`${username} reconnected`, { icon: '🔄' });
       },
 
-'room-rejoin-ack': ({ roomId: ack, members }) => {
-  if (ack !== roomId) return;
-  setIsReconnecting(false);
-  setParticipants(members);
 
-  const others = members.filter(m => m.userId !== user._id);
-  if (others.length > 0) {
-    others.forEach(({ userId: peerId }) => {
-      setTimeout(() => {
-        console.log('[VideoRoom] room-rejoin-ack fallback offer →', peerId);
-        createOffer(peerId);
-      }, 2000);
-    });
-  }
-},
-
+      'room-rejoin-ack': ({ roomId: ack, members }) => {
+        if (ack !== roomId) return;
+        setIsReconnecting(false);
+        setParticipants(members);
+      },
 
       // WebRTC signalling
       'webrtc-offer':         ({ offer, from })     => handleOffer(from, roomId, offer),
@@ -522,7 +509,7 @@ const { user }     = useAuth();
     Object.entries(handlers).forEach(([ev, fn]) => socket.on(ev, fn));
 
     return () => {
-      Object.entries(handlers).forEach(([ev, fn]) => socket.off(ev, fn));
+      Object.keys(handlers).forEach(ev => socket.off(ev));
     };
   }, [socket, roomId]); // eslint-disable-line react-hooks/exhaustive-deps
 
