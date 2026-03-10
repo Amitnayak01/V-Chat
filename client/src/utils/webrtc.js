@@ -36,11 +36,15 @@ export const MEDIA_CONSTRAINTS = {
     height: { ideal: 720, max: 1080 },
     frameRate: { ideal: 30, max: 60 }
   },
+
   audio: {
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true
-  }
+  echoCancellation: { ideal: true },
+  noiseSuppression: { ideal: true },
+  autoGainControl:  { ideal: true },
+  sampleRate:       { ideal: 48000 },
+  sampleSize:       { ideal: 16 },
+  channelCount:     { ideal: 1 },
+}
 };
 
 // Screen share constraints

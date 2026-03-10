@@ -1,6 +1,7 @@
 import { useAuth }   from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
-import { LogOut, Bell, ChevronDown } from 'lucide-react';
+import { LogOut, Bell, ChevronDown, Shield } from 'lucide-react';
+
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -152,6 +153,19 @@ const Navbar = ({ onNavigateToProfile, notificationCount = 0 }) => {
                   </div>
                 </button>
 
+{/* Admin Panel — only for admin/superadmin */}
+                {['admin', 'superadmin'].includes(user?.role) && (
+                  <div className="py-1.5 border-b border-slate-100">
+                    <button
+                      onClick={() => { navigate('/super-admin-dashboard'); setDropdown(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-violet-600 hover:bg-violet-50 transition-colors font-medium"
+                    >
+                      <Shield className="w-4 h-4 flex-shrink-0" />
+                      Admin Panel
+                    </button>
+                  </div>
+                )}
+
                 {/* Logout */}
                 <div className="py-1.5">
                   <button
@@ -162,6 +176,7 @@ const Navbar = ({ onNavigateToProfile, notificationCount = 0 }) => {
                     Logout
                   </button>
                 </div>
+
               </div>
             )}
           </div>

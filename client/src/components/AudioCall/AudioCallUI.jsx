@@ -202,7 +202,7 @@ const DeviceDrawer = ({onClose,devices,selectedMic,setSelectedMic,selectedSpeake
           <p style={{color:'rgba(255,255,255,.35)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',margin:'0 0 10px'}}>Enhancements</p>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',borderRadius:12,background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.07)',marginBottom:20}}>
             <div><p style={{color:'#fff',fontSize:13,fontWeight:600,margin:0}}>Noise Suppression</p><p style={{color:'rgba(255,255,255,.4)',fontSize:11,margin:'2px 0 0'}}>Filters background noise in real-time</p></div>
-            <button onClick={()=>setNoiseSuppression(v=>!v)} style={{width:44,height:24,borderRadius:12,background:noiseSuppression?'#10b981':'rgba(255,255,255,.12)',border:'none',cursor:'pointer',position:'relative',transition:'background .2s',padding:0,flexShrink:0}}>
+            <button onClick={handleToggleNoiseSuppression} style={{width:44,height:24,borderRadius:12,background:noiseSuppression?'#10b981':'rgba(255,255,255,.12)',border:'none',cursor:'pointer',position:'relative',transition:'background .2s',padding:0,flexShrink:0}}>
               <span style={{position:'absolute',top:2,left:noiseSuppression?22:2,width:20,height:20,borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.3)'}}/>
             </button>
           </div>
@@ -270,6 +270,18 @@ const AudioCallUI = () => {
   const {devices}=useAudioDevices();
   const cardRef=useRef(null),dragStart=useRef(null),recRef=useRef(null),recTimer=useRef(null),recChunks=useRef([]);
 
+
+  // Sync noiseSuppression state → live audio track (handles DeviceDrawer toggle too)
+useEffect(() => {
+  if (!localStream) return;
+  localStream.getAudioTracks().forEach(track => {
+    track.applyConstraints({
+      noiseSuppression: { ideal: noiseSuppression },
+      echoCancellation: { ideal: true },
+      autoGainControl:  { ideal: true },
+    }).catch(() => {});
+  });
+}, [noiseSuppression, localStream]);
   useEffect(()=>{
     const active=['incoming','calling','connecting','connected'].includes(callState);
     if(active) setMounted(true);
@@ -308,6 +320,25 @@ const AudioCallUI = () => {
      3. emit call-user   — sends incoming-call popup to peer (same as Dashboard)
      4. navigate         — takes the caller straight into VideoRoom
   ─────────────────────────────────────────────────────────────────────── */
+
+  const handleToggleNoiseSuppression = useCallback(async () => {
+  const next = !noiseSuppression;
+  setNoiseSuppression(next);
+  if (localStream) {
+    for (const track of localStream.getAudioTracks()) {
+      try {
+        await track.applyConstraints({
+          noiseSuppression: { ideal: next },
+          echoCancellation: { ideal: true },
+          autoGainControl:  { ideal: true },
+        });
+      } catch (err) {
+        console.warn('[AudioCallUI] applyConstraints failed:', err.message);
+      }
+    }
+  }
+}, [noiseSuppression, localStream]);
+
   const handleSwitchToVideo=useCallback(()=>{
     if(!activeCall?.peerId) return;
     const roomId=generateRoomId();
@@ -441,7 +472,7 @@ const AudioCallUI = () => {
           <div style={{borderRadius:18,padding:'10px 20px',margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'center',gap:'clamp(8px,2.5vw,22px)',background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',backdropFilter:'blur(16px)',maxWidth:480,flexWrap:'wrap'}}>
             <Btn icon={UserPlus} label="Add"     variant="purple"  onClick={()=>setShowConferenceModal(true)}                                                       size="md"/>
             <Btn icon={Video}    label="Video"   variant="blue"    onClick={handleSwitchToVideo} disabled={videoDisabled} title={videoTitle}                         size="md"/>
-            <Btn icon={Mic}      label={noiseSuppression?'NS: On':'NS: Off'} variant="teal" active={noiseSuppression} onClick={()=>setNoiseSuppression(v=>!v)}      size="md"/>
+            <Btn icon={Mic}      label={noiseSuppression?'NS: On':'NS: Off'} variant="teal" active={noiseSuppression} onClick={handleToggleNoiseSuppression}      size="md"/>
             <Btn icon={Settings} label="Devices" variant="default" active={showDeviceDrawer}  onClick={()=>setShowDeviceDrawer(v=>!v)}                              size="md"/>
           </div>
           {(selectedMic!=='default'||activeSinkId)&&<div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:16,marginTop:10}}>{selectedMic!=='default'&&<div style={{display:'flex',alignItems:'center',gap:5}}><Mic style={{width:10,height:10,color:'rgba(255,255,255,.35)'}}/><span style={{fontSize:10,color:'rgba(255,255,255,.35)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{devices.mics.find(d=>d.deviceId===selectedMic)?.label?.split('(')[0]||'Custom mic'}</span></div>}{activeSinkId&&<div style={{display:'flex',alignItems:'center',gap:5}}><Headphones style={{width:10,height:10,color:'rgba(255,255,255,.35)'}}/><span style={{fontSize:10,color:'rgba(255,255,255,.35)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{devices.speakers.find(d=>d.deviceId===activeSinkId)?.label?.split('(')[0]||'Custom output'}</span></div>}</div>}
@@ -533,7 +564,7 @@ const AudioCallUI = () => {
                     <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:isMobile?16:12,padding:isMobile?'13px 18px':'11px 16px',animation:'vm-panelin .18s ease'}}>
                       <Btn icon={UserPlus} label="Add"     variant="purple"  onClick={()=>setShowConferenceModal(true)}                                                  size="sm"/>
                       <Btn icon={Video}    label="Video"   variant="blue"    onClick={handleSwitchToVideo} disabled={videoDisabled} title={videoTitle}                    size="sm"/>
-                      <Btn icon={Mic}      label={noiseSuppression?'NS: On':'NS: Off'} variant="teal" active={noiseSuppression} onClick={()=>setNoiseSuppression(v=>!v)} size="sm"/>
+                      <Btn icon={Mic}      label={noiseSuppression?'NS: On':'NS: Off'} variant="teal" active={noiseSuppression} onClick={handleToggleNoiseSuppression} size="sm"/>
                       <Btn icon={Settings} label="Devices" variant="default" active={showDeviceDrawer} onClick={()=>setShowDeviceDrawer(v=>!v)}                          size="sm"/>
                     </div>
                   )}

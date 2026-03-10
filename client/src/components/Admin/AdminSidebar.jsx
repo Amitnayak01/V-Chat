@@ -3,8 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, MessageSquare, Phone,
   Video, Flag, BarChart3, Activity, ScrollText,
-  ChevronLeft, Shield, LogOut, Zap, Headphones,
-} from 'lucide-react';
+ ChevronLeft, Shield, LogOut, Zap, Headphones, X,} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const NAV_ITEMS = [
@@ -49,18 +48,26 @@ export default function AdminSidebar({ open, onClose }) {
         `}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-white/5">
+       <div className="flex items-center gap-3 px-4 py-5 border-b border-white/5 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center flex-shrink-0">
             <Shield className="w-4 h-4 text-white" />
           </div>
           {open && (
-            <div>
-              <p className="text-sm font-bold text-white tracking-wide">V-Meet Admin</p>
-              <p className="text-[10px] text-violet-400 uppercase tracking-widest">{user?.role}</p>
-            </div>
+            <>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white tracking-wide truncate">V-Meet Admin</p>
+                <p className="text-[10px] text-violet-400 uppercase tracking-widest">{user?.role}</p>
+              </div>
+              <button
+                onClick={onClose}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all flex-shrink-0"
+                title="Close sidebar"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </>
           )}
         </div>
-
         {/* Nav */}
         <nav className="flex-1 py-4 overflow-y-auto">
           {NAV_ITEMS.map(({ to, icon: Icon, label, exact }) => (

@@ -1,253 +1,250 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Volume2, VolumeX, Music, Play, Square, RotateCcw,
-  Video, MessageCircle, Upload, FolderOpen, FileMusic,
-  Smartphone, CheckCircle2,
-} from 'lucide-react';
-import { SoundEngine, RINGTONE_OPTIONS, MESSAGE_TONE_OPTIONS,
-         getCustomRingtone, setCustomRingtone, fileToDataUrl } from '../../utils/SoundEngine';
-import { useSoundSettings } from '../../hooks/useSoundSettings';
 
-const C = {
-  bg:       '#F0F2F5',
-  surface:  '#FFFFFF',
-  surfaceEl:'#F8F9FB',
-  border:   '#E4E7EC',
-  borderSub:'#EEF0F4',
-  ink:      '#0D1117',
-  inkSub:   '#3D4451',
-  muted:    '#6C7789',
-  dim:      '#9AA3B2',
-  accent:   '#2563EB',
-  accentH:  '#1D4ED8',
-  accentL:  '#EFF6FF',
-  accentLH: '#DBEAFE',
-  red:      '#DC2626',
-  redBg:    '#FFF5F5',
-  redLine:  '#FECACA',
-  green:    '#16A34A',
-  greenBg:  '#F0FDF4',
-  greenLn:  '#BBF7D0',
-  amber:    '#D97706',
-  amberBg:  '#FFFBEB',
-  purple:   '#7C3AED',
-  purpleBg: '#F5F3FF',
-  teal:     '#0369A1',
-  tealBg:   '#E0F2FE',
-  emerald:    '#059669',
-  emeraldBg:  '#ECFDF5',
-  emeraldLn:  '#A7F3D0',
-  rose:       '#E11D48',
-  roseBg:     '#FFF1F2',
+/* ─── Palette ─────────────────────────────────────────── */
+const T = {
+  bg:        '#F4F6FA',
+  surface:   '#FFFFFF',
+  surf2:     '#F9FAFB',
+  border:    '#E8ECF2',
+  borderSub: '#F0F3F7',
+  ink:       '#0C1120',
+  inkSub:    '#3A4257',
+  muted:     '#6B7897',
+  dim:       '#9BA8BF',
+  blue:      '#2451F5',
+  blueH:     '#1A3ED4',
+  blueL:     '#EEF3FE',
+  blueLH:    '#DCE9FD',
+  green:     '#0D9F6E',
+  greenL:    '#EDFAF5',
+  amber:     '#C97B1A',
+  amberL:    '#FEF9EC',
+  red:       '#DC2626',
+  redL:      '#FFF4F4',
+  purple:    '#6D28D9',
+  purpleL:   '#F3EFFF',
+  purpleLH:  '#E3D9FC',
 };
 
-const SPR  = { type: 'spring', stiffness: 480, damping: 36 };
-const EASE = { duration: 0.22, ease: [0.4, 0, 0.2, 1] };
-const UP   = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: EASE } };
-
-const SOUND_TABS = [
-  { id: 'audio',   label: 'Audio Call', Icon: Music,         accent: '#059669', accentL: '#ECFDF5', accentBd: '#A7F3D0' },
-  { id: 'video',   label: 'Video Call', Icon: Video,         accent: '#2563EB', accentL: '#EFF6FF', accentBd: '#BFDBFE' },
-  { id: 'message', label: 'Messages',   Icon: MessageCircle, accent: '#7C3AED', accentL: '#F5F3FF', accentBd: '#DDD6FE' },
+const TABS = [
+  { id: 'audio',   label: 'Audio Call', emoji: '📞', accent: T.green,  accentL: T.greenL,  border: '#BBF0D8' },
+  { id: 'video',   label: 'Video Call', emoji: '🎥', accent: T.blue,   accentL: T.blueL,   border: '#BFDBFE' },
+  { id: 'message', label: 'Messages',   emoji: '💬', accent: T.purple, accentL: T.purpleL, border: '#DDD6FE' },
 ];
 
-const SmallToggle = ({ checked, onChange }) => (
-  <button
-    role="switch" aria-checked={checked}
-    onClick={() => onChange(!checked)}
-    style={{
-      position: 'relative', flexShrink: 0, width: 44, height: 24,
-      borderRadius: 99, border: 'none', cursor: 'pointer',
-      background: checked ? C.accent : '#D1D5DB',
-      outline: 'none', transition: 'background .22s',
-      boxShadow: checked ? `0 0 0 3px ${C.accentLH}` : 'none',
-    }}
-  >
-    <motion.span animate={{ x: checked ? 22 : 3 }} transition={SPR}
-      style={{ position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,.20)' }}
-    />
-  </button>
-);
+const RINGTONES = [
+  { id: 'classic',  label: 'Classic Ring',    desc: 'Traditional phone ringtone' },
+  { id: 'gentle',   label: 'Gentle Pulse',    desc: 'Soft, gradual tones' },
+  { id: 'digital',  label: 'Digital Buzz',    desc: 'Modern electronic sound' },
+  { id: 'marimba',  label: 'Marimba',         desc: 'Warm, wooden percussion' },
+  { id: 'silent',   label: 'Silent',          desc: 'No ringtone' },
+];
+const MSG_TONES = [
+  { id: 'ding',     label: 'Ding',            desc: 'Quick single chime' },
+  { id: 'pop',      label: 'Pop',             desc: 'Soft notification pop' },
+  { id: 'note',     label: 'Note',            desc: 'Musical note ping' },
+  { id: 'silent',   label: 'Silent',          desc: 'No notification sound' },
+];
 
-const VolumeSlider = ({ value, onChange, accent }) => {
+const SPR = { type: 'spring', stiffness: 500, damping: 38 };
+const EASE = { duration: 0.2, ease: [0.4, 0, 0.2, 1] };
+
+/* ─── Toggle ──────────────────────────────────────────── */
+function Toggle({ checked, onChange, accent = T.blue }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        position: 'relative', flexShrink: 0,
+        width: 52, height: 30, borderRadius: 99,
+        border: 'none', cursor: 'pointer', outline: 'none',
+        background: checked ? accent : '#D8DCEA',
+        transition: 'background .25s cubic-bezier(.4,0,.2,1)',
+        boxShadow: checked
+          ? `0 0 0 4px ${accent}26, inset 0 1px 2px ${accent}40`
+          : 'inset 0 1px 2px rgba(0,0,0,.1)',
+      }}
+    >
+      <motion.span
+        animate={{ x: checked ? 24 : 3 }}
+        transition={SPR}
+        style={{
+          position: 'absolute', top: 3,
+          width: 24, height: 24, borderRadius: '50%',
+          background: '#FFFFFF',
+          boxShadow: '0 1px 5px rgba(0,0,0,.22), 0 0 1px rgba(0,0,0,.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        {checked && (
+          <motion.svg
+            initial={{ opacity: 0, scale: 0.4 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.4 }}
+            transition={{ duration: 0.15 }}
+            width="10" height="8" viewBox="0 0 10 8" fill="none"
+          >
+            <path d="M1 4L3.5 6.5L9 1" stroke={accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </motion.svg>
+        )}
+      </motion.span>
+    </button>
+  );
+}
+
+/* ─── Volume Slider ───────────────────────────────────── */
+function VolumeSlider({ value, onChange, accent }) {
   const pct = Math.round(value * 100);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <VolumeX style={{ width: 14, height: 14, color: C.dim, flexShrink: 0 }} />
-      <div style={{ flex: 1, position: 'relative', height: 20, display: 'flex', alignItems: 'center' }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 2, background: C.border }} />
-        <div style={{ position: 'absolute', left: 0, width: `${pct}%`, height: 4, borderRadius: 2, background: accent, transition: 'width .1s' }} />
-        <input type="range" min={0} max={1} step={0.05} value={value}
+      <span style={{ fontSize: 16, lineHeight: 1 }}>{value === 0 ? '🔇' : value < 0.4 ? '🔈' : value < 0.8 ? '🔉' : '🔊'}</span>
+      <div style={{ flex: 1, position: 'relative', height: 24, display: 'flex', alignItems: 'center' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, height: 5, borderRadius: 3, background: T.border }} />
+        <div style={{
+          position: 'absolute', left: 0, width: `${pct}%`, height: 5,
+          borderRadius: 3, background: `linear-gradient(90deg, ${accent}88, ${accent})`,
+          transition: 'width .08s',
+        }} />
+        <input
+          type="range" min={0} max={1} step={0.05} value={value}
           onChange={e => onChange(parseFloat(e.target.value))}
-          style={{ position: 'relative', width: '100%', appearance: 'none', WebkitAppearance: 'none',
-            background: 'transparent', cursor: 'pointer', outline: 'none', margin: 0 }}
+          style={{
+            position: 'relative', width: '100%',
+            appearance: 'none', WebkitAppearance: 'none',
+            background: 'transparent', cursor: 'pointer',
+            outline: 'none', margin: 0,
+            '--thumb-color': accent,
+          }}
         />
       </div>
-      <Volume2 style={{ width: 14, height: 14, color: C.muted, flexShrink: 0 }} />
-      <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, width: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
+      <span style={{
+        fontSize: 11.5, fontWeight: 700, color: T.muted,
+        minWidth: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+      }}>{pct}%</span>
     </div>
   );
-};
+}
 
-const RingRow = ({ option, selected, previewing, onSelect, onPreview, onStop, accent, accentL }) => (
-  <div
-    onClick={() => onSelect(option.id)}
-    style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '11px 14px', borderRadius: 10, cursor: 'pointer',
-      background: selected ? accentL : C.surfaceEl,
-      border: `1.5px solid ${selected ? accent : C.border}`,
-      marginBottom: 6, transition: 'all .15s',
-    }}
-    onMouseEnter={e => { if (!selected) { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = '#CBD5E1'; } }}
-    onMouseLeave={e => { if (!selected) { e.currentTarget.style.background = C.surfaceEl; e.currentTarget.style.borderColor = C.border; } }}
-  >
-    <div style={{
-      width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-      background: selected ? accent : 'transparent',
-      border: `2px solid ${selected ? accent : C.dim}`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
-    }}>
-      {selected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
-    </div>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <p style={{ fontSize: 13, fontWeight: selected ? 600 : 500, color: selected ? C.ink : C.inkSub, margin: 0 }}>{option.label}</p>
-      <p style={{ fontSize: 11, color: C.dim, margin: '2px 0 0' }}>{option.desc}</p>
-    </div>
-    <button
-      onClick={e => { e.stopPropagation(); previewing ? onStop() : onPreview(option.id); }}
+/* ─── Tone Row ────────────────────────────────────────── */
+function ToneRow({ opt, selected, previewing, onSelect, onPreview, onStop, accent, accentL, accentBd }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <motion.div
+      layout
+      onClick={() => onSelect(opt.id)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        width: 30, height: 30, borderRadius: '50%', border: `1px solid ${C.border}`,
-        background: previewing ? '#FFF1F2' : C.surface,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+        background: selected ? accentL : hovered ? T.surf2 : T.surface,
+        border: `1.5px solid ${selected ? accentBd : hovered ? T.border : T.borderSub}`,
+        marginBottom: 6, transition: 'all .15s',
       }}
     >
-      {previewing
-        ? <Square style={{ width: 10, height: 10, color: C.rose }} />
-        : <Play   style={{ width: 10, height: 10, color: C.muted }} />}
-    </button>
-  </div>
-);
+      {/* Radio */}
+      <div style={{
+        width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+        background: selected ? accent : 'transparent',
+        border: `2px solid ${selected ? accent : T.dim}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all .18s',
+        boxShadow: selected ? `0 0 0 3px ${accent}20` : 'none',
+      }}>
+        {selected && (
+          <motion.div
+            initial={{ scale: 0 }} animate={{ scale: 1 }} transition={SPR}
+            style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }}
+          />
+        )}
+      </div>
 
-const FromDeviceRow = ({ tabId, onCustomSet }) => {
-  const typeMap = { audio: 'ring', video: 'video', message: 'message' };
-  const type    = typeMap[tabId] ?? 'ring';
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13.5, fontWeight: selected ? 600 : 500, color: selected ? T.ink : T.inkSub, margin: 0, letterSpacing: '-.01em' }}>{opt.label}</p>
+        <p style={{ fontSize: 11.5, color: T.dim, margin: '2px 0 0', lineHeight: 1.3 }}>{opt.desc}</p>
+      </div>
 
-  const [custom,    setCustom]    = useState(() => getCustomRingtone(type));
-  const [dragging,  setDragging]  = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [previewing,setPreviewing]= useState(false);
+      {opt.id !== 'silent' && (
+        <button
+          onClick={e => { e.stopPropagation(); previewing ? onStop() : onPreview(opt.id); }}
+          style={{
+            width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+            border: `1.5px solid ${previewing ? '#FECACA' : T.border}`,
+            background: previewing ? T.redL : T.surface,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', transition: 'all .15s',
+          }}
+        >
+          {previewing
+            ? <span style={{ fontSize: 13 }}>⏹</span>
+            : <span style={{ fontSize: 13 }}>▶</span>}
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
+/* ─── Upload Zone ─────────────────────────────────────── */
+function UploadZone({ tabId }) {
+  const [dragging, setDragging] = useState(false);
+  const [uploaded, setUploaded] = useState(null);
   const inputRef = useRef(null);
 
-  useEffect(() => { setCustom(getCustomRingtone(type)); }, [type]);
-
-  const handleFile = async (file) => {
+  const handleFile = (file) => {
     if (!file) return;
-    if (!file.type.startsWith('audio/')) { alert('Please select an audio file (mp3, wav, ogg, m4a, etc.)'); return; }
-    if (file.size > 10 * 1024 * 1024) { alert('File too large — max 10 MB'); return; }
-    setUploading(true);
-    try {
-      const dataUrl = await fileToDataUrl(file);
-      setCustomRingtone(type, dataUrl);
-      setCustom(dataUrl);
-      onCustomSet(true);
-    } catch (e) { alert('Could not read file'); }
-    finally { setUploading(false); }
-  };
-
-  const handleDrop = (e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files?.[0]); };
-
-  const handleRemove = () => {
-    SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone();
-    setCustomRingtone(type, null);
-    setCustom(null); setPreviewing(false); onCustomSet(false);
-  };
-
-  const handlePreview = () => {
-    if (previewing) {
-      SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone(); setPreviewing(false);
-    } else {
-      setPreviewing(true);
-      if (tabId === 'video') {
-        SoundEngine.playVideoCallTone('chime', 0.8);
-        setTimeout(() => { SoundEngine.stopVideoCallTone(); setPreviewing(false); }, 3000);
-      } else if (tabId === 'message') {
-        SoundEngine.playMessageTone('ding', 0.6);
-        setTimeout(() => setPreviewing(false), 1000);
-      } else {
-        SoundEngine.playRingtone('classic', 0.8);
-        setTimeout(() => { SoundEngine.stopRingtone(); setPreviewing(false); }, 3000);
-      }
-    }
+    if (!file.type.startsWith('audio/')) return alert('Please upload an audio file.');
+    if (file.size > 10 * 1024 * 1024) return alert('Max file size is 10 MB.');
+    setUploaded(file.name);
   };
 
   return (
-    <div style={{ marginBottom: 6 }}>
+    <div>
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
+        onDrop={e => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files?.[0]); }}
         style={{
-          border: `2px dashed ${dragging ? '#2563EB' : custom ? '#059669' : C.border}`,
-          borderRadius: 12, padding: '16px 14px',
-          background: dragging ? '#EFF6FF' : custom ? C.greenBg : C.surfaceEl,
-          transition: 'all .18s', cursor: 'default',
+          border: `2px dashed ${dragging ? T.blue : uploaded ? T.green : T.border}`,
+          borderRadius: 14, padding: '18px 16px',
+          background: dragging ? T.blueL : uploaded ? T.greenL : T.surf2,
+          transition: 'all .2s', cursor: 'default',
         }}
       >
-        {custom ? (
+        {uploaded ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-              background: C.greenBg, border: `1px solid ${C.greenLn}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <FileMusic style={{ width: 18, height: 18, color: C.emerald }} />
-            </div>
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: T.greenL, border: `1px solid #BBF0D8`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+            }}>🎵</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: 0 }}>Custom ringtone active</p>
-              <p style={{ fontSize: 11, color: C.emerald, margin: '2px 0 0' }}>✓ This tone will play instead of built-in ringtones</p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: T.ink, margin: 0 }}>Custom tone active</p>
+              <p style={{ fontSize: 11.5, color: T.green, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploaded}</p>
             </div>
-            <button onClick={handlePreview} title={previewing ? 'Stop' : 'Preview'}
-              style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${C.border}`,
-                background: previewing ? '#FFF1F2' : C.surface, flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              {previewing ? <Square style={{ width: 10, height: 10, color: C.rose }} /> : <Play style={{ width: 10, height: 10, color: C.muted }} />}
-            </button>
-            <button onClick={() => inputRef.current?.click()} title="Change file"
-              style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${C.border}`,
-                background: C.surface, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <Upload style={{ width: 12, height: 12, color: C.muted }} />
-            </button>
-            <button onClick={handleRemove} title="Remove custom ringtone"
-              style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${C.redLine}`,
-                background: C.redBg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <Square style={{ width: 12, height: 12, color: C.red }} />
-            </button>
+            <button
+              onClick={() => setUploaded(null)}
+              style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid #FECACA`, background: T.redL, fontSize: 11.5, color: T.red, cursor: 'pointer', fontWeight: 600 }}
+            >Remove</button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
             <div style={{
-              width: 44, height: 44, borderRadius: 12,
-              background: dragging ? C.accentL : C.border,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s',
-            }}>
-              {uploading
-                ? <div style={{ width: 18, height: 18, border: `2px solid ${C.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                : <FolderOpen style={{ width: 20, height: 20, color: dragging ? C.accent : C.muted }} />}
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: C.inkSub, margin: 0 }}>
-                {uploading ? 'Loading…' : dragging ? 'Drop to upload' : 'Choose from device'}
+              width: 48, height: 48, borderRadius: 14,
+              background: dragging ? T.blueLH : T.border,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, transition: 'background .15s',
+            }}>{dragging ? '🎯' : '📂'}</div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: T.inkSub, margin: 0 }}>
+                {dragging ? 'Drop audio file' : 'Upload from device'}
               </p>
-              <p style={{ fontSize: 11, color: C.dim, margin: '3px 0 0' }}>
-                Drag & drop, or{' '}
-                <span onClick={() => inputRef.current?.click()}
-                  style={{ color: C.accent, cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
-                  browse files
-                </span>
-                {' '}· MP3, WAV, OGG, M4A · Max 10 MB
+              <p style={{ fontSize: 11.5, color: T.dim, margin: '4px 0 0', lineHeight: 1.5 }}>
+                Drag & drop or{' '}
+                <span onClick={() => inputRef.current?.click()} style={{ color: T.blue, cursor: 'pointer', fontWeight: 600 }}>browse files</span>
+                {' '}· MP3, WAV, OGG · Max 10 MB
               </p>
             </div>
           </div>
@@ -257,221 +254,213 @@ const FromDeviceRow = ({ tabId, onCustomSet }) => {
         onChange={e => handleFile(e.target.files?.[0])} />
     </div>
   );
-};
+}
 
-const RingPanel = ({ tabId, ringOptions, selectedId, onSelect, volume, onVolume, vibration, onVibration, accent, accentL }) => {
-  const [previewing, setPreviewing] = useState(null);
-  const [hasCustom,  setHasCustom]  = useState(() => {
-    const typeMap = { audio: 'ring', video: 'video', message: 'message' };
-    return !!getCustomRingtone(typeMap[tabId] ?? 'ring');
-  });
+/* ─── Ring Panel ──────────────────────────────────────── */
+function RingPanel({ tabId, tones, accent, accentL, accentBd }) {
   const isMsg = tabId === 'message';
+  const [selected, setSelected]   = useState(tones[0].id);
+  const [previewing, setPreviewing]= useState(null);
+  const [volume, setVolume]       = useState(0.75);
+  const [vibrate, setVibrate]     = useState(true);
 
   const handlePreview = (id) => {
-    if (id === 'silent') return;
     setPreviewing(id);
-    if (isMsg) {
-      SoundEngine.playMessageTone(id, volume);
-      setTimeout(() => setPreviewing(null), 900);
-    } else {
-      const type = tabId === 'video' ? 'video' : 'ring';
-      SoundEngine.previewRingtone(id, volume, type);
-      setTimeout(() => setPreviewing(null), 3100);
-    }
+    setTimeout(() => setPreviewing(null), isMsg ? 800 : 3000);
   };
-
-  const handleStop = () => {
-    SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone(); setPreviewing(null);
-  };
-
-  useEffect(() => { handleStop(); }, [tabId]); // eslint-disable-line
 
   return (
-    <div style={{ padding: '4px 0' }}>
-      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>
-        From Device
-      </p>
-      <FromDeviceRow tabId={tabId} onCustomSet={setHasCustom} />
+    <div>
+      {/* Upload */}
+      <p style={{ fontSize: 11, fontWeight: 700, color: T.dim, textTransform: 'uppercase', letterSpacing: '.09em', marginBottom: 10 }}>From Device</p>
+      <UploadZone tabId={tabId} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 14px' }}>
-        <div style={{ flex: 1, height: 1, background: C.border }} />
-        <span style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', whiteSpace: 'nowrap' }}>
-          Built-in Ringtones
-        </span>
-        <div style={{ flex: 1, height: 1, background: C.border }} />
+      {/* Divider */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 14px' }}>
+        <div style={{ flex: 1, height: 1, background: T.border }} />
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: T.dim, textTransform: 'uppercase', letterSpacing: '.09em', whiteSpace: 'nowrap' }}>Built-in tones</span>
+        <div style={{ flex: 1, height: 1, background: T.border }} />
       </div>
 
-      <div style={{ opacity: hasCustom ? 0.45 : 1, transition: 'opacity .2s', pointerEvents: hasCustom ? 'none' : 'auto' }}>
-        {hasCustom && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px',
-            background: C.amberBg, border: `1px solid #FDE68A`, borderRadius: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 13 }}>ℹ️</span>
-            <p style={{ fontSize: 11.5, color: C.amber, margin: 0 }}>Custom file overrides built-in ringtones</p>
-          </div>
-        )}
-        {ringOptions.map(opt => (
-          <RingRow key={opt.id} option={opt} selected={selectedId === opt.id} previewing={previewing === opt.id}
-            onSelect={onSelect} onPreview={handlePreview} onStop={handleStop} accent={accent} accentL={accentL} />
+      {/* Tones */}
+      <div>
+        {tones.map(opt => (
+          <ToneRow key={opt.id} opt={opt} selected={selected === opt.id} previewing={previewing === opt.id}
+            onSelect={setSelected} onPreview={handlePreview} onStop={() => setPreviewing(null)}
+            accent={accent} accentL={accentL} accentBd={accentBd} />
         ))}
       </div>
 
-      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', margin: '18px 0 10px' }}>Volume</p>
-      <div style={{ padding: '14px 16px', background: C.surfaceEl, border: `1px solid ${C.border}`, borderRadius: 10 }}>
-        <VolumeSlider value={volume} onChange={onVolume} accent={accent} />
+      {/* Volume */}
+      <p style={{ fontSize: 11, fontWeight: 700, color: T.dim, textTransform: 'uppercase', letterSpacing: '.09em', margin: '20px 0 10px' }}>Volume</p>
+      <div style={{ padding: '14px 16px', background: T.surf2, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+        <VolumeSlider value={volume} onChange={setVolume} accent={accent} />
       </div>
 
-      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.dim, textTransform: 'uppercase', letterSpacing: '.1em', margin: '18px 0 10px' }}>Vibration</p>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', background: C.surfaceEl, border: `1px solid ${C.border}`, borderRadius: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Smartphone style={{ width: 15, height: 15, color: C.muted }} />
+      {/* Vibration */}
+      <p style={{ fontSize: 11, fontWeight: 700, color: T.dim, textTransform: 'uppercase', letterSpacing: '.09em', margin: '20px 0 10px' }}>Vibration</p>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 16px', background: T.surf2, border: `1px solid ${T.border}`, borderRadius: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 18 }}>📳</span>
           <div>
-            <p style={{ fontSize: 13, fontWeight: 500, color: C.inkSub, margin: 0 }}>
+            <p style={{ fontSize: 13.5, fontWeight: 500, color: T.inkSub, margin: 0 }}>
               {isMsg ? 'Vibrate on Message' : 'Vibrate on Ring'}
             </p>
-            <p style={{ fontSize: 11, color: C.dim, margin: '2px 0 0' }}>Haptic feedback (mobile)</p>
+            <p style={{ fontSize: 11.5, color: T.dim, margin: '2px 0 0' }}>Haptic feedback on mobile</p>
           </div>
         </div>
-        <SmallToggle checked={vibration} onChange={onVibration} />
+        <Toggle checked={vibrate} onChange={setVibrate} accent={accent} />
       </div>
     </div>
   );
-};
+}
 
-const Card = ({ children }) => (
-  <motion.section
-    variants={UP}
-    style={{
-      background: C.surface,
-      borderRadius: 16,
-      overflow: 'hidden',
-      border: `1px solid ${C.border}`,
-      boxShadow: '0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04)',
-    }}
-  >
-    {children}
-  </motion.section>
-);
+/* ─── Main Component ──────────────────────────────────── */
+export default function SoundSettings() {
+  const [activeTab, setActiveTab] = useState('audio');
+  const tabMeta = TABS.find(t => t.id === activeTab);
+  const tones = activeTab === 'message' ? MSG_TONES : RINGTONES;
 
-const CH = ({ icon: Icon, title, subtitle, iColor, iBg }) => (
-  <div style={{
-    display: 'flex', alignItems: 'center', gap: 14, padding: '16px 22px',
-    borderBottom: `1px solid ${C.borderSub}`, background: C.surfaceEl,
-  }}>
-    <div style={{
-      width: 38, height: 38, borderRadius: 10, background: iBg,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      boxShadow: `0 0 0 1px ${iBg}`,
-    }}>
-      <Icon style={{ width: 16, height: 16, color: iColor }} />
-    </div>
-    <div>
-      <h3 style={{ fontSize: 14.5, fontWeight: 600, color: C.ink, margin: 0, lineHeight: 1.25, letterSpacing: '-.01em' }}>{title}</h3>
-      {subtitle && <p style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{subtitle}</p>}
-    </div>
-  </div>
-);
-
-const SoundSettingsCard = () => {
-  const { settings, update, reset } = useSoundSettings();
-  const [activeTab, setActiveTab]   = useState('audio');
-
-  useEffect(() => () => { SoundEngine.stopRingtone(); SoundEngine.stopVideoCallTone(); }, []);
-
-  const tabMeta  = SOUND_TABS.find(t => t.id === activeTab);
-  const isVideo  = activeTab === 'video';
-  const isMsg    = activeTab === 'message';
-  const cat      = isMsg ? settings.messages : isVideo ? settings.videoCall : settings.audioCall;
-  const catKey   = isMsg ? 'messages' : isVideo ? 'videoCall' : 'audioCall';
-  const ringOpts = isMsg ? MESSAGE_TONE_OPTIONS : RINGTONE_OPTIONS;
-  const selId    = isMsg ? cat.tone : cat.ringtone;
-  const selKey   = isMsg ? 'tone' : 'ringtone';
-
-  return (
-    <Card>
-      <CH icon={Music} title="Sound & Ringtones" subtitle="Customize tones and vibration for calls and messages" iColor={C.emerald} iBg={C.emeraldBg} />
-
-      <div style={{ display: 'flex', gap: 0, padding: '0 22px', borderBottom: `1px solid ${C.borderSub}`, background: C.surfaceEl }}>
-        {SOUND_TABS.map(tab => {
-          const on = activeTab === tab.id;
-          return (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '11px 16px',
-                border: 'none', background: 'transparent', cursor: 'pointer',
-                fontSize: 12.5, fontWeight: on ? 700 : 500, fontFamily: 'inherit',
-                color: on ? tab.accent : C.muted,
-                borderBottom: `2px solid ${on ? tab.accent : 'transparent'}`,
-                marginBottom: -1, transition: 'all .15s', whiteSpace: 'nowrap',
-              }}>
-              <tab.Icon style={{ width: 13, height: 13 }} />
-              {tab.label}
-            </button>
-          );
-        })}
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingRight: 4 }}>
-          <button onClick={reset} title="Reset all sound settings to defaults"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px',
-              borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface,
-              fontSize: 11, fontWeight: 500, color: C.dim, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = C.surfaceEl; e.currentTarget.style.color = C.muted; }}
-            onMouseLeave={e => { e.currentTarget.style.background = C.surface;   e.currentTarget.style.color = C.dim; }}>
-            <RotateCcw style={{ width: 11, height: 11 }} /> Reset
-          </button>
-        </div>
-      </div>
-
-      <div className="card-body" style={{ padding: '20px 22px 26px' }}>
-        <AnimatePresence mode="wait">
-          <motion.div key={activeTab}
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: .18 }}>
-            <RingPanel
-              tabId={activeTab} ringOptions={ringOpts} selectedId={selId}
-              onSelect={id => update(catKey, { [selKey]: id })}
-              volume={cat.volume} onVolume={v => update(catKey, { volume: v })}
-              vibration={cat.vibration} onVibration={v => update(catKey, { vibration: v })}
-              accent={tabMeta.accent} accentL={tabMeta.accentL}
-            />
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      <div style={{ padding: '10px 22px', borderTop: `1px solid ${C.borderSub}`, display: 'flex', alignItems: 'center', gap: 7 }}>
-        <CheckCircle2 style={{ width: 13, height: 13, color: C.emerald, flexShrink: 0 }} />
-        <p style={{ fontSize: 11.5, color: C.dim }}>Settings saved automatically and apply to all calls immediately.</p>
-      </div>
-    </Card>
-  );
-};
-
-export default function Settings() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-        *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html { -webkit-tap-highlight-color: transparent; }
-        .vs { font-family: 'DM Sans', system-ui, -apple-system, sans-serif; font-size: 14px; color: #0D1117; }
-        @keyframes spin  { to { transform: rotate(360deg); } }
+        .ss-root { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 14px; color: ${T.ink}; }
         input[type=range]::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          width: 16px; height: 16px; border-radius: 50%;
-          background: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,.18);
-          cursor: pointer; border: none;
+          -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+          background: var(--thumb-color, ${T.blue});
+          box-shadow: 0 1px 4px rgba(0,0,0,.18), 0 0 0 3px rgba(0,0,0,.05);
+          cursor: pointer; border: 2px solid #fff;
+          transition: transform .15s;
         }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
         input[type=range]::-moz-range-thumb {
-          width: 16px; height: 16px; border-radius: 50%;
-          background: #2563EB; border: none;
-          box-shadow: 0 0 0 3px rgba(37,99,235,.18); cursor: pointer;
+          width: 20px; height: 20px; border-radius: 50%;
+          background: var(--thumb-color, ${T.blue}); border: 2px solid #fff;
+          box-shadow: 0 1px 4px rgba(0,0,0,.18); cursor: pointer;
+        }
+        .ss-tabs { display: flex; }
+        @media (max-width: 540px) {
+          .ss-tab-btn span.tab-label { display: none; }
+          .ss-tab-btn { padding: 10px 14px !important; gap: 0 !important; }
+          .ss-reset-label { display: none !important; }
+          .ss-reset-btn { padding: 6px 8px !important; font-size: 13px !important; }
+        }
+        @media (max-width: 360px) {
+          .ss-tab-btn { padding: 10px 10px !important; }
         }
       `}</style>
-      <div className="vs" style={{ minHeight: '100vh', background: C.bg }}>
-        <div style={{ maxWidth: 680, margin: '0 auto', padding: '44px 28px 60px' }}>
-          <motion.div variants={{ show: { transition: { staggerChildren: 0.08 } } }} initial="hidden" animate="show">
-            <SoundSettingsCard />
+
+      <div className="ss-root" style={{ minHeight: '100vh', background: `radial-gradient(ellipse 80% 50% at 50% -10%, ${tabMeta.accentL}, ${T.bg} 60%)`, transition: 'background .5s' }}>
+        <div style={{ maxWidth: 680, margin: '0 auto', padding: 'clamp(24px,5vw,52px) clamp(14px,4vw,28px) 64px' }}>
+
+          {/* Page header */}
+          <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={EASE} style={{ marginBottom: 28 }}>
+            <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 'clamp(22px,5vw,30px)', fontWeight: 800, color: T.ink, letterSpacing: '-.03em', lineHeight: 1.1 }}>
+              Sound &amp; Ringtones
+            </h1>
+            <p style={{ fontSize: 13.5, color: T.muted, marginTop: 6, lineHeight: 1.5 }}>Customize tones, volume and vibration for calls &amp; messages.</p>
+          </motion.div>
+
+          {/* Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...EASE, delay: 0.05 }}
+            style={{
+              background: T.surface, borderRadius: 20,
+              border: `1px solid ${T.border}`,
+              boxShadow: '0 2px 4px rgba(0,0,0,.03), 0 8px 32px rgba(0,0,0,.06)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Tab bar */}
+            <div className="ss-tabs" style={{
+              display: 'flex', gap: 0,
+              borderBottom: `1px solid ${T.borderSub}`,
+              background: T.surf2,
+              padding: '0 clamp(10px,3vw,22px)',
+            }}>
+              {TABS.map(tab => {
+                const on = activeTab === tab.id;
+                return (
+                  <button key={tab.id} className="ss-tab-btn" onClick={() => setActiveTab(tab.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7,
+                      padding: 'clamp(10px,2vw,13px) clamp(10px,2vw,18px)',
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      fontSize: 'clamp(11.5px,2vw,13px)', fontWeight: on ? 700 : 500,
+                      fontFamily: 'inherit', color: on ? tab.accent : T.muted,
+                      borderBottom: `2.5px solid ${on ? tab.accent : 'transparent'}`,
+                      marginBottom: -1, transition: 'all .18s', whiteSpace: 'nowrap',
+                    }}>
+                    <span style={{ fontSize: 'clamp(13px,2vw,15px)' }}>{tab.emoji}</span>
+                    <span className="tab-label">{tab.label}</span>
+                    {on && (
+                      <motion.span layoutId="tab-pip" style={{
+                        width: 5, height: 5, borderRadius: '50%', background: tab.accent, marginLeft: 1,
+                      }} />
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Reset */}
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingRight: 4 }}>
+                <button
+                  className="ss-reset-btn"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '6px 11px', borderRadius: 8,
+                    border: `1px solid ${T.border}`, background: T.surface,
+                    fontSize: 11.5, fontWeight: 600, color: T.dim, cursor: 'pointer',
+                    fontFamily: 'inherit', transition: 'all .15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = T.surf2; e.currentTarget.style.color = T.muted; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = T.surface; e.currentTarget.style.color = T.dim; }}
+                >
+                  <span style={{ fontSize: 12 }}>↺</span>
+                  <span className="ss-reset-label">Reset</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Panel */}
+            <div style={{ padding: 'clamp(16px,4vw,24px) clamp(14px,4vw,24px) clamp(20px,4vw,28px)' }}>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <RingPanel
+                    tabId={activeTab}
+                    tones={tones}
+                    accent={tabMeta.accent}
+                    accentL={tabMeta.accentL}
+                    accentBd={tabMeta.border}
+                  />
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '12px clamp(14px,4vw,24px)',
+              borderTop: `1px solid ${T.borderSub}`,
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: T.surf2,
+            }}>
+              <span style={{ fontSize: 14 }}>✅</span>
+              <p style={{ fontSize: 11.5, color: T.dim, lineHeight: 1.4 }}>Changes are saved automatically and apply immediately.</p>
+            </div>
           </motion.div>
         </div>
       </div>
