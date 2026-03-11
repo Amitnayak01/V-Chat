@@ -34,6 +34,9 @@ import AnalyticsDashboard  from './components/Admin/AnalyticsDashboard';
 import SystemHealth        from './components/Admin/SystemHealth';
 import AdminLogs           from './components/Admin/AdminLogs';
 import AdminSupportInbox from './components/Admin/AdminSupportInbox';
+import { PiPProvider } from './context/PiPContext';
+import FloatingPiP    from './components/VideoCall/FloatingPiP';
+
 // ─── Admin Guard ─────────────────────────────────────────────────────────────
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
@@ -349,6 +352,7 @@ function App() {
         <WebRTCProvider>
           <AudioCallProvider>
             <Router>
+                <PiPProvider>          {/* ← ADD */}
               <Routes>
                 {/* ─── Public ───────────────────────────────────────────── */}
                 <Route path="/login"    element={<Login />} />
@@ -394,7 +398,7 @@ function App() {
               <GlobalBroadcast />
               <IncomingAudioCall />
               <AudioCallUI />
-
+                       <FloatingPiP />  
               <Toaster
                 position="top-right"
                 toastOptions={{
@@ -411,6 +415,7 @@ function App() {
                   error:   { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
                 }}
               />
+              </PiPProvider> 
             </Router>
           </AudioCallProvider>
         </WebRTCProvider>

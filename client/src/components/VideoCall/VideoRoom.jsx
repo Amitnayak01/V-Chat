@@ -19,7 +19,7 @@ import { useAuth }   from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { useWebRTC } from '../../context/WebRTCContext';
 import useActiveSpeaker from '../../hooks/useActiveSpeaker';
-
+import { usePiP } from '../../context/PiPContext';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VideoRoom = () => {
@@ -86,7 +86,7 @@ const VideoRoom = () => {
 
   // ── External hooks ───────────────────────────────────────────────────────
  
-  const { roomId }   = useParams();
+const { roomId }   = useParams();
 const navigate     = useNavigate();
 const location     = useLocation();
 const { user }     = useAuth();
@@ -105,6 +105,9 @@ const { user }     = useAuth();
     handlePeerDisconnect, cleanup,
   } = useWebRTC();
 
+  const { activatePiP, deactivatePiP, hidePiP } = usePiP();
+
+  
   const activeSpeaker = useActiveSpeaker(user._id, localStream, remoteStreams);
 
   // ── Navigate back to wherever the caller came from ────────────────────────
@@ -187,46 +190,62 @@ const { user }     = useAuth();
     });
 
 
+return () => {
+  if (noAnswerTimerRef.current) {
+    clearTimeout(noAnswerTimerRef.current);
+    noAnswerTimerRef.current = null;
+  }
 
+  if (intentionalLeave.current) {
+    // Intentional leave: fully end the call
+    emit('leave-room', { roomId, userId: user._id });
+    clearCurrentRoom();
+    deactivatePiP();
 
- return () => {
-      if (noAnswerTimerRef.current) {
-        clearTimeout(noAnswerTimerRef.current);
-        noAnswerTimerRef.current = null;
-      }
-      if (intentionalLeave.current) {
-        emit('leave-room', { roomId, userId: user._id });
-        clearCurrentRoom();
-
-        // If caller leaves before receiver accepted, notify receiver
-        // so their ringing UI dismisses and ringtone stops
-        if (!otherJoinedRef.current) {
-          try {
-            const calling = sessionStorage.getItem('vmeet_calling');
-            if (calling) {
-              const { receiverId } = JSON.parse(calling);
-              emit('cancel-call', {
-                receiverId,
-                callerId: user._id,
-              });
-            }
-          } catch (_) {}
+    if (!otherJoinedRef.current) {
+      try {
+        const calling = sessionStorage.getItem('vmeet_calling');
+        if (calling) {
+          const { receiverId } = JSON.parse(calling);
+          emit('cancel-call', { receiverId, callerId: user._id });
         }
-        sessionStorage.removeItem('vmeet_calling');
-      }
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(t => t.stop());
-        screenStreamRef.current = null;
-      }
-      hasJoined.current = false;
-      otherJoinedRef.current = false;
-      cleanup();
-    };
+      } catch (_) {}
+    }
+    sessionStorage.removeItem('vmeet_calling');
+
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
+    }
+    hasJoined.current = false;
+    otherJoinedRef.current = false;
+    cleanup();
+
+  } else {
+    // User navigated away — keep call alive, show PiP
+    if (localStream && otherJoinedRef.current) {
+      activatePiP(roomId, localStream, remoteStreams);
+    }
+    clearCurrentRoom();
+
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
+    }
+    hasJoined.current = false;
+    // NOTE: intentionally do NOT call cleanup() here —
+    // peer connections and streams must stay alive for PiP
+  }
+};
 
 
 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
  
+  useEffect(() => {
+  hidePiP();
+}, []); // eslint-disable-line react-hooks/exhaustive-deps
+  
   // ── Effect 2: Join room (once media + socket are ready) ───────────────────
   useEffect(() => {
     if (!connected || !localStream || hasJoined.current) return;
@@ -529,17 +548,17 @@ const { user }     = useAuth();
   // ── Effect 5: Auto-close when other person leaves a 2-person call ─────────
   // Runs whenever participants changes. Navigation must NOT happen inside
   // a setState updater (impure) — this effect is the correct place for it.
-  useEffect(() => {
-    if (!hasJoined.current || !otherJoinedRef.current) return;
-    if (participants.length === 0) {
-      const t = setTimeout(() => {
-        intentionalLeave.current = true;
-        navigateBack();
-      }, 1500);
-      return () => clearTimeout(t);
-    }
-  }, [participants, navigateBack]);
-
+useEffect(() => {
+  if (!hasJoined.current || !otherJoinedRef.current) return;
+  if (participants.length === 0) {
+    const t = setTimeout(() => {
+      intentionalLeave.current = true;
+      deactivatePiP();   // ← ADD THIS LINE
+      navigateBack();
+    }, 1500);
+    return () => clearTimeout(t);
+  }
+}, [participants, navigateBack, deactivatePiP]); // ← add deactivatePiP to deps
   // ── Screen share ──────────────────────────────────────────────────────────
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -892,12 +911,11 @@ const handleSwitchCamera = useCallback(async () => {
 const handleEndCall = useCallback(() => {
   if (isRecording) { toast.error('Stop recording before leaving'); return; }
   intentionalLeave.current = true;
+  deactivatePiP();   // ← ADD THIS LINE
   emit('leave-room', { roomId, userId: user._id });
   clearCurrentRoom();
   navigateBack();
-}, [isRecording, navigateBack, emit, roomId, user._id, clearCurrentRoom]);
-
-
+}, [isRecording, navigateBack, emit, roomId, user._id, clearCurrentRoom, deactivatePiP]);
 
   // ── Hand raise ────────────────────────────────────────────────────────────
   const handleRaiseHand = useCallback(() => {
