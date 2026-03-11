@@ -32,7 +32,7 @@ const useIsMobile = () => {
 };
 
 const useAudioDevices = () => {
-  useAudioDeviceManager({ selectedMic, noiseSuppression })
+
   const [devices,setDevices] = useState({mics:[],speakers:[]});
   const refresh = useCallback(async()=>{
     try {
@@ -270,6 +270,8 @@ const AudioCallUI = () => {
   const activeSpeaker=useActiveSpeaker(remoteStreams);
   const networkQuality=useNetworkQuality(remoteStreams);
   const {devices}=useAudioDevices();
+  useAudioDeviceManager({ selectedMic, noiseSuppression });
+
   const cardRef=useRef(null),dragStart=useRef(null),recRef=useRef(null),recTimer=useRef(null),recChunks=useRef([]);
 
   useEffect(()=>{
