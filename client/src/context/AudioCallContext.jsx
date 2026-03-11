@@ -136,8 +136,6 @@ export const AudioCallProvider = ({ children }) => {
       existing.onconnectionstatechange = null;
       existing.close();
       peerConnectionsRef.current.delete(userId);
-      window.__vmAudioPeerConnections?.delete(userId)
-
     }
     const pc = new RTCPeerConnection(WEBRTC_CONFIG);
     const stream = localStreamRef.current;
@@ -167,9 +165,6 @@ export const AudioCallProvider = ({ children }) => {
       if (pc.iceConnectionState === 'failed') pc.restartIce?.();
     };
     peerConnectionsRef.current.set(userId, pc);
-    if (!window.__vmAudioPeerConnections) window.__vmAudioPeerConnections = new Map()
-window.__vmAudioPeerConnections.set(userId, pc)
-
     return pc;
   }, [emit, user, publishRemoteStream, removeRemoteStream]);
 
@@ -268,7 +263,6 @@ window.__vmAudioPeerConnections.set(userId, pc)
       pc.ontrack = null; pc.onicecandidate = null; pc.onconnectionstatechange = null; pc.close();
     });
     peerConnectionsRef.current.clear();
-    window.__vmAudioPeerConnections?.clear()
     remoteStreamsRef.current.clear();
     pendingCandidates.current.clear();
 

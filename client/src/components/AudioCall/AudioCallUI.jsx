@@ -15,7 +15,6 @@ import { useAudioCall } from '../../context/AudioCallContext';
 import { useSocket }    from '../../context/SocketContext';
 import { useAuth }      from '../../context/AuthContext';
 import { generateRoomId } from '../../utils/webrtc';
-import { useAudioDeviceManager } from '../../hooks/useAudioDeviceManager';
 
 /* ─── helpers ────────────────────────────────────────────────────────────── */
 const fmt   = s => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -32,7 +31,6 @@ const useIsMobile = () => {
 };
 
 const useAudioDevices = () => {
-
   const [devices,setDevices] = useState({mics:[],speakers:[]});
   const refresh = useCallback(async()=>{
     try {
@@ -270,8 +268,6 @@ const AudioCallUI = () => {
   const activeSpeaker=useActiveSpeaker(remoteStreams);
   const networkQuality=useNetworkQuality(remoteStreams);
   const {devices}=useAudioDevices();
-  useAudioDeviceManager({ selectedMic, noiseSuppression });
-
   const cardRef=useRef(null),dragStart=useRef(null),recRef=useRef(null),recTimer=useRef(null),recChunks=useRef([]);
 
   useEffect(()=>{
