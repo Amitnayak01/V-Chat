@@ -1326,8 +1326,15 @@ const handleMinimize = useCallback(() => {
   isOpen={isInviteModalOpen}
   onClose={() => setIsInviteModalOpen(false)}
   onInvite={handleInviteParticipant}
-  currentParticipantIds={participants.map(p => p.userId ?? p)}
-  onlineUserIds={onlineUserIds}
+   onCancel={(contact) => {           // ← ADD THIS
+    emit('cancel-invite-to-video-room', {
+      roomId,
+      inviteeId: contact._id,
+      inviterId: user._id,
+    });
+  }}
+currentParticipantIds={[user._id, ...participants.map(p => p.userId ?? p)]}
+onlineUserIds={onlineUserIds}
 />
     </div>
   );

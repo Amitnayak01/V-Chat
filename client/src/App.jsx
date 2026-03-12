@@ -337,199 +337,143 @@ function GlobalOutgoingCall() {
     />
   );
 }
+
+
 function GlobalVideoInvite() {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
   const navigate         = useNavigate();
+  const activeInvites    = useRef(new Map()); // roomId → intervalId
 
   useEffect(() => {
     if (!socket) return;
 
-socket.on('incoming-video-invite', ({ roomId, inviterId, inviterName, inviterAvatar }) => {
-  let countdown = 30;
-  let intervalId = null;
+    socket.on('incoming-video-invite', ({ roomId, inviterId, inviterName, inviterAvatar }) => {
+      let countdown = 30;
+      const toastId = `invite-${roomId}`;
 
-  const toastId = `invite-${roomId}`;
+      // Clear any existing invite for this room
+      if (activeInvites.current.has(roomId)) {
+        clearInterval(activeInvites.current.get(roomId));
+        activeInvites.current.delete(roomId);
+      }
 
-  const renderToast = (t, seconds) => (
-    <div
-      style={{
-        background:   'linear-gradient(135deg, #0f1923 0%, #0d1520 100%)',
-        border:       '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '20px',
-        padding:      '0',
-        width:        '300px',
-        overflow:     'hidden',
-        boxShadow:    '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
-        opacity:       t.visible ? 1 : 0,
-        transform:     t.visible ? 'translateY(0) scale(1)' : 'translateY(-12px) scale(0.95)',
-        transition:    'all 0.3s cubic-bezier(0.34,1.56,0.64,1)',
-      }}
-    >
-      {/* Accent bar */}
-      <div style={{
-        height: '3px',
-        background: 'linear-gradient(90deg, #22c55e, #16a34a, #10b981)',
-        borderRadius: '20px 20px 0 0',
-      }} />
-
-      <div style={{ padding: '16px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-
-          {/* Avatar with pulse ring */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{
-              position:     'absolute',
-              inset:        '-4px',
-              borderRadius: '50%',
-              background:   'conic-gradient(#22c55e ' + (seconds / 30 * 360) + 'deg, rgba(255,255,255,0.08) 0deg)',
-              transition:   'background 1s linear',
-            }} />
-            <div style={{
-              position:     'absolute',
-              inset:        '-1px',
-              borderRadius: '50%',
-              background:   '#0f1923',
-            }} />
-            <img
-              src={inviterAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${inviterName}`}
-              alt={inviterName}
-              style={{
-                width:        '46px',
-                height:       '46px',
-                borderRadius: '50%',
-                objectFit:    'cover',
-                position:     'relative',
-                zIndex:       1,
-                display:      'block',
-              }}
-              onError={e => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${inviterName}`; }}
-            />
-          </div>
-
-          {/* Text */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-              <p style={{
-                margin: 0, fontWeight: 700, fontSize: '14px',
-                color: '#f1f5f9', letterSpacing: '-0.01em',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      const renderToast = (t, seconds) => (
+        <div style={{
+          background: 'linear-gradient(135deg, #0f1923 0%, #0d1520 100%)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '20px',
+          padding: '0',
+          width: '300px',
+          overflow: 'hidden',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
+          opacity: t.visible ? 1 : 0,
+          transform: t.visible ? 'translateY(0) scale(1)' : 'translateY(-12px) scale(0.95)',
+          transition: 'all 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+        }}>
+          <div style={{ height: '3px', background: 'linear-gradient(90deg, #22c55e, #16a34a, #10b981)', borderRadius: '20px 20px 0 0' }} />
+          <div style={{ padding: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <div style={{
+                  position: 'absolute', inset: '-4px', borderRadius: '50%',
+                  background: 'conic-gradient(#22c55e ' + (seconds / 30 * 360) + 'deg, rgba(255,255,255,0.08) 0deg)',
+                  transition: 'background 1s linear',
+                }} />
+                <div style={{ position: 'absolute', inset: '-1px', borderRadius: '50%', background: '#0f1923' }} />
+                <img
+                  src={inviterAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${inviterName}`}
+                  alt={inviterName}
+                  style={{ width: '46px', height: '46px', borderRadius: '50%', objectFit: 'cover', position: 'relative', zIndex: 1, display: 'block' }}
+                  onError={e => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${inviterName}`; }}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '14px', color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {inviterName}
+                </p>
+                <p style={{ margin: 0, fontSize: '11px', color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+                  📹 Invites you to a video call
+                </p>
+              </div>
+              <div style={{
+                flexShrink: 0, width: '32px', height: '32px', borderRadius: '50%',
+                background: seconds <= 10 ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${seconds <= 10 ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '11px', fontWeight: 700,
+                color: seconds <= 10 ? '#f87171' : 'rgba(255,255,255,0.4)',
+                fontVariantNumeric: 'tabular-nums',
               }}>
-                {inviterName}
-              </p>
+                {seconds}
+              </div>
             </div>
-            <p style={{ margin: 0, fontSize: '11px', color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
-              📹 Invites you to a video call
-            </p>
-          </div>
-
-          {/* Countdown badge */}
-          <div style={{
-            flexShrink:   0,
-            width:        '32px',
-            height:       '32px',
-            borderRadius: '50%',
-            background:   seconds <= 10 ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)',
-            border:       `1px solid ${seconds <= 10 ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)'}`,
-            display:      'flex',
-            alignItems:   'center',
-            justifyContent: 'center',
-            fontSize:     '11px',
-            fontWeight:   700,
-            color:        seconds <= 10 ? '#f87171' : 'rgba(255,255,255,0.4)',
-            transition:   'all 0.3s',
-            fontVariantNumeric: 'tabular-nums',
-          }}>
-            {seconds}
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', marginBottom: '12px' }} />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => {
+                  clearInterval(activeInvites.current.get(roomId));
+                  activeInvites.current.delete(roomId);
+                  toast.dismiss(toastId);
+                  emit('video-invite-accepted', { roomId, inviterId, acceptorId: user._id, acceptorName: user.username });
+                  navigate(`/room/${roomId}`);
+                }}
+                style={{ flex: 1, padding: '9px 0', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(34,197,94,0.35)', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.target.style.transform = 'scale(1.03)'; }}
+                onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
+              >
+                Join Now
+              </button>
+              <button
+                onClick={() => {
+                  clearInterval(activeInvites.current.get(roomId));
+                  activeInvites.current.delete(roomId);
+                  toast.dismiss(toastId);
+                  emit('video-invite-rejected', { inviterId, rejectorName: user.username, inviteeId: user._id });
+                }}
+                style={{ flex: 1, padding: '9px 0', borderRadius: '12px', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.1)', color: '#f87171', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.target.style.background = 'rgba(239,68,68,0.2)'; }}
+                onMouseLeave={e => { e.target.style.background = 'rgba(239,68,68,0.1)'; }}
+              >
+                Decline
+              </button>
+            </div>
           </div>
         </div>
+      );
 
-        {/* Divider */}
-        <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', marginBottom: '12px' }} />
+      toast((t) => renderToast(t, countdown), {
+        duration: 30000, id: toastId,
+        style: { background: 'transparent', boxShadow: 'none', padding: 0, maxWidth: '320px' },
+      });
 
-        {/* Buttons */}
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => {
-              clearInterval(intervalId);
-              toast.dismiss(toastId);
-              emit('video-invite-accepted', {
-                roomId, inviterId,
-                acceptorId:   user._id,
-                acceptorName: user.username,
-              });
-              navigate(`/room/${roomId}`);
-            }}
-            style={{
-              flex:         1,
-              padding:      '9px 0',
-              borderRadius: '12px',
-              border:       'none',
-              background:   'linear-gradient(135deg, #22c55e, #16a34a)',
-              color:        '#fff',
-              fontSize:     '12px',
-              fontWeight:   700,
-              cursor:       'pointer',
-              letterSpacing: '0.02em',
-              boxShadow:    '0 4px 14px rgba(34,197,94,0.35)',
-              transition:   'all 0.15s',
-            }}
-            onMouseEnter={e => { e.target.style.transform = 'scale(1.03)'; e.target.style.boxShadow = '0 6px 20px rgba(34,197,94,0.5)'; }}
-            onMouseLeave={e => { e.target.style.transform = 'scale(1)';    e.target.style.boxShadow = '0 4px 14px rgba(34,197,94,0.35)'; }}
-          >
-            Join Now
-          </button>
-          <button
-            onClick={() => {
-              clearInterval(intervalId);
-              toast.dismiss(toastId);
-emit('video-invite-rejected', {
-  inviterId, rejectorName: user.username, inviteeId: user._id,
-});
-            }}
-            style={{
-              flex:         1,
-              padding:      '9px 0',
-              borderRadius: '12px',
-              border:       '1px solid rgba(239,68,68,0.25)',
-              background:   'rgba(239,68,68,0.1)',
-              color:        '#f87171',
-              fontSize:     '12px',
-              fontWeight:   700,
-              cursor:       'pointer',
-              letterSpacing: '0.02em',
-              transition:   'all 0.15s',
-            }}
-            onMouseEnter={e => { e.target.style.background = 'rgba(239,68,68,0.2)'; e.target.style.borderColor = 'rgba(239,68,68,0.4)'; }}
-            onMouseLeave={e => { e.target.style.background = 'rgba(239,68,68,0.1)'; e.target.style.borderColor = 'rgba(239,68,68,0.25)'; }}
-          >
-            Decline
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+      const intervalId = setInterval(() => {
+        countdown -= 1;
+        if (countdown <= 0) {
+          clearInterval(intervalId);
+          activeInvites.current.delete(roomId);
+          toast.dismiss(toastId);
+          return;
+        }
+        toast((t) => renderToast(t, countdown), {
+          duration: (countdown * 1000) + 500, id: toastId,
+          style: { background: 'transparent', boxShadow: 'none', padding: 0, maxWidth: '320px' },
+        });
+      }, 1000);
 
-  toast(
-    (t) => renderToast(t, countdown),
-    { duration: 30000, id: toastId, style: { background: 'transparent', boxShadow: 'none', padding: 0, maxWidth: '320px' } }
-  );
+      // ← Store interval so invite-cancelled can clear it
+      activeInvites.current.set(roomId, intervalId);
+    });
 
-  // Live countdown — re-renders the toast every second
-  intervalId = setInterval(() => {
-    countdown -= 1;
-    if (countdown <= 0) {
-      clearInterval(intervalId);
-      toast.dismiss(toastId);
-      return;
-    }
-    toast(
-      (t) => renderToast(t, countdown),
-      { duration: (countdown * 1000) + 500, id: toastId, style: { background: 'transparent', boxShadow: 'none', padding: 0, maxWidth: '320px' } }
-    );
-  }, 1000);
-});
+    socket.on('invite-cancelled', ({ roomId: cancelledRoomId }) => {
+      // ← Kill the interval first, THEN dismiss the toast
+      if (activeInvites.current.has(cancelledRoomId)) {
+        clearInterval(activeInvites.current.get(cancelledRoomId));
+        activeInvites.current.delete(cancelledRoomId);
+      }
+      toast.dismiss(`invite-${cancelledRoomId}`);
+      toast('Invite was cancelled', { icon: '❌', duration: 3000 });
+    });
 
     socket.on('invite-accepted', ({ acceptorName }) => {
       toast.success(`${acceptorName} joined the call!`);
@@ -542,7 +486,11 @@ emit('video-invite-rejected', {
     });
 
     return () => {
+      // Clean up all active intervals on unmount
+      activeInvites.current.forEach(id => clearInterval(id));
+      activeInvites.current.clear();
       socket.off('incoming-video-invite');
+      socket.off('invite-cancelled');
       socket.off('invite-accepted');
       socket.off('invite-rejected');
       socket.off('invite-failed');
@@ -551,6 +499,9 @@ emit('video-invite-rejected', {
 
   return null;
 }
+
+
+
 const JoinRedirect = () => {
   const { meetingCode } = useParams();
   return <Navigate to={`/room/${meetingCode}`} replace />;

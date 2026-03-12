@@ -234,6 +234,20 @@ export const handleSocketConnection = (io) => {
   }
 });
 
+socket.on('get-online-users', () => {
+  socket.emit('online-users-list', {
+    userIds: Array.from(userSockets.keys()),
+  });
+});
+
+socket.on('cancel-invite-to-video-room', ({ roomId, inviteeId, inviterId }) => {
+  const inviteeSocketId = userSockets.get(inviteeId);
+  if (inviteeSocketId) {
+    io.to(inviteeSocketId).emit('invite-cancelled', { inviterId, roomId });
+    console.log(`❌ Invite cancelled by ${inviterId} to ${inviteeId}`);
+  }
+});
+
 socket.on('video-invite-accepted', ({ roomId, inviterId, acceptorId, acceptorName }) => {
   const inviterSocket = userSockets.get(inviterId);
   if (inviterSocket) {
