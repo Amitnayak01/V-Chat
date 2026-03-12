@@ -285,13 +285,31 @@ const [invited, setInvited] = useState(new Map());
     ...(peerId ? [peerId] : []),
   ]);
 
-  useEffect(() => {
-    fetch('/api/contacts', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-      .then(r => r.json())
-      .then(d => { if (d.success) setContacts(d.contacts); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+useEffect(() => {
+  const token = localStorage.getItem('token') || 
+                localStorage.getItem('authToken') || 
+                sessionStorage.getItem('token');
+
+  fetch('/api/contacts', { 
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    } 
+  })
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(d => {
+      console.log('[ConferenceModal] contacts response:', d);
+      if (d.success) setContacts(d.contacts);
+      else if (Array.isArray(d)) setContacts(d); // some APIs return array directly
+    })
+    .catch(err => {
+      console.error('[ConferenceModal] contacts fetch failed:', err);
+    })
+    .finally(() => setLoading(false));
+}, []);
 
   /* Sort: already-in-call contacts float to top */
   const filtered = contacts

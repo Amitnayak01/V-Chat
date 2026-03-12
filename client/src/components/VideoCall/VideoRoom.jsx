@@ -52,6 +52,7 @@ const VideoRoom = () => {
   const [isShareModalOpen,     setIsShareModalOpen]      = useState(false);
   const [isInviteModalOpen,    setIsInviteModalOpen]     = useState(false);
   const [handRaised,           setHandRaised]            = useState(false);
+ const [onlineUserIds, setOnlineUserIds] = useState(new Set());
   const [handRaisedMap,        setHandRaisedMap]         = useState(() => new Map());
   const [handNotifications,    setHandNotifications]     = useState([]);
   const handNotifIdRef = useRef(0);
@@ -251,6 +252,8 @@ const { user }     = useAuth();
       avatar:   user.avatar,
     });
 
+    emit('get-online-users', { roomId });
+
     // Auto-close if nobody joins within 45 seconds
     noAnswerTimerRef.current = setTimeout(() => {
       if (!otherJoinedRef.current) {
@@ -275,6 +278,9 @@ const { user }     = useAuth();
             username: user.username,
             avatar:   user.avatar,
           });
+
+          
+emit('get-online-users', { roomId });
         }
       },
   
@@ -513,9 +519,28 @@ const { user }     = useAuth();
         });
       },
 
+
+      'user-online': ({ userId }) => {
+  setOnlineUserIds(prev => new Set([...prev, userId]));
+},
+
+'user-offline': ({ userId }) => {
+  setOnlineUserIds(prev => {
+    const next = new Set(prev);
+    next.delete(userId);
+    return next;
+  });
+},
+
+'online-users-list': ({ userIds = [] }) => {
+  setOnlineUserIds(new Set(userIds));
+},
+
       'mute-error': ({ message }) => {
         toast.error(message ?? 'Mute action not permitted');
       },
+
+      
     };
 
     Object.entries(handlers).forEach(([ev, fn]) => socket.on(ev, fn));
@@ -1302,6 +1327,7 @@ const handleMinimize = useCallback(() => {
   onClose={() => setIsInviteModalOpen(false)}
   onInvite={handleInviteParticipant}
   currentParticipantIds={participants.map(p => p.userId ?? p)}
+  onlineUserIds={onlineUserIds}
 />
     </div>
   );

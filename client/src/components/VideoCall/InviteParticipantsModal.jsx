@@ -4,7 +4,7 @@ import { X, Search, Users, UserPlus, Clock, Check } from 'lucide-react';
 import api from '../../utils/api';
 import { useSocket } from '../../context/SocketContext';
 
-const InviteParticipantsModal = ({ isOpen, onClose, onInvite, currentParticipantIds = [] }) => {
+const InviteParticipantsModal = ({ isOpen, onClose, onInvite, currentParticipantIds = [], onlineUserIds = new Set() }) => {
   const [contacts,  setContacts]  = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [search,    setSearch]    = useState('');
@@ -180,24 +180,30 @@ useEffect(() => {
                       {alreadyIn && <p className="text-green-400 text-xs">Already in call</p>}
                     </div>
 
-                    {/* Button */}
-                    {alreadyIn ? (
-                      <span className="px-3 py-1 rounded-lg text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20">
-                        In call
-                      </span>
-                    ) : wasSent ? (
-                      <span className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold text-white/40 bg-white/5 border border-white/10">
-                        <Clock className="w-3 h-3" /> Sent
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => handleInvite(contact)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-green-500/20 hover:bg-green-500/35 border border-green-500/30 transition-all active:scale-95"
-                      >
-                        <UserPlus className="w-3 h-3" />
-                        Invite
-                      </button>
-                    )}
+
+{alreadyIn ? (
+  <span className="px-3 py-1 rounded-lg text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20">
+    In call
+  </span>
+) : !onlineUserIds.has(contact._id) ? (
+  <span className="px-3 py-1 rounded-lg text-xs font-semibold text-white/25 bg-white/5 border border-white/10 cursor-not-allowed">
+    Offline
+  </span>
+) : wasSent ? (
+  <span className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold text-white/40 bg-white/5 border border-white/10">
+    <Clock className="w-3 h-3" /> Sent
+  </span>
+) : (
+  <button
+    onClick={() => handleInvite(contact)}
+    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-green-500/20 hover:bg-green-500/35 border border-green-500/30 transition-all active:scale-95"
+  >
+    <UserPlus className="w-3 h-3" />
+    Invite
+  </button>
+)}
+
+
                   </div>
                 );
               })}
