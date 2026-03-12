@@ -1,6 +1,6 @@
 import { useAuth }   from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
-import { LogOut, Bell, ChevronDown, Shield } from 'lucide-react';
+import { LogOut, Bell, ChevronDown, Shield, RefreshCw } from 'lucide-react';
 
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -69,6 +69,15 @@ const Navbar = ({ onNavigateToProfile, notificationCount = 0 }) => {
             }`} />
             <span className="hidden sm:inline">{connected ? 'Connected' : 'Offline'}</span>
           </div>
+
+          {/* Refresh button */}
+          <button
+            onClick={() => window.location.reload()}
+            className="relative w-9 h-9 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-all flex-shrink-0"
+            title="Refresh page"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
 
           {/* Notification / Chats bell
               Clicking always opens the CHAT LIST, never a specific chat window */}

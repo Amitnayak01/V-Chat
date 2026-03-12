@@ -4,14 +4,15 @@ import {
   Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff,
   LayoutGrid, Users, MessageCircle, Hand, MoreHorizontal,
   SwitchCamera, UserCheck, MicOff as MuteAllIcon,
-  Radio, StopCircle, Smile,
+  Radio, StopCircle, Smile, Minimize2,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DESIGN: "Frosted command deck"
-// Deep navy glass surface, razor-thin borders, status indicators that live
-// inside the bar. Breakpoints: xs(<480) sm(480) md(640) lg(1024)
+// Haptic helper — fires on mobile, silently ignored on desktop
 // ─────────────────────────────────────────────────────────────────────────────
+const haptic = (pattern = [8]) => {
+  try { navigator.vibrate?.(pattern); } catch (_) {}
+};
 
 const fmtDur = (s) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -58,7 +59,7 @@ const StatusBar = ({ isRecording, isScreenSharing, recordingDuration }) => (
         className="overflow-hidden"
       >
         <div className="flex items-center justify-center gap-2 pt-2 pb-1 px-4">
-          {isRecording  && <RecIndicator duration={recordingDuration} />}
+          {isRecording   && <RecIndicator duration={recordingDuration} />}
           {isScreenSharing && <ShareIndicator />}
         </div>
       </motion.div>
@@ -66,43 +67,68 @@ const StatusBar = ({ isRecording, isScreenSharing, recordingDuration }) => (
   </AnimatePresence>
 );
 
-// ── Tooltip (desktop only) ────────────────────────────────────────────────────
-const Tip = ({ label, children }) => (
+// ── Tooltip with optional keyboard shortcut (desktop only) ───────────────────
+const Tip = ({ label, shortcut, children }) => (
   <div className="group relative flex items-center justify-center">
     {children}
-    <div className="pointer-events-none absolute bottom-full mb-2 left-1/2 -translate-x-1/2
-                    opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50
-                    hidden lg:block">
-      <div className="bg-[#1e2130] border border-white/10 text-white text-[11px] font-medium
-                      px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
-        {label}
+    <div className="pointer-events-none absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2
+                    opacity-0 group-hover:opacity-100 transition-all duration-150 z-50
+                    hidden lg:flex flex-col items-center gap-1">
+      <div className="bg-[#12172a] border border-white/12 text-white text-[11px] font-medium
+                      px-2.5 py-1.5 rounded-xl shadow-2xl whitespace-nowrap flex items-center gap-2">
+        <span>{label}</span>
+        {shortcut && (
+          <kbd className="text-[9px] font-bold bg-white/10 border border-white/15
+                          px-1.5 py-0.5 rounded-md text-slate-300 font-mono">
+            {shortcut}
+          </kbd>
+        )}
       </div>
-      <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4
-                      border-r-4 border-t-4 border-l-transparent border-r-transparent
-                      border-t-[#1e2130]" />
+      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4
+                      border-l-transparent border-r-transparent border-t-[#12172a]" />
     </div>
   </div>
 );
 
+// ── Ripple effect hook ────────────────────────────────────────────────────────
+const useRipple = () => {
+  const [ripples, setRipples] = useState([]);
+  const trigger = useCallback((e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX ?? rect.left + rect.width / 2) - rect.left;
+    const y = (e.clientY ?? rect.top  + rect.height / 2) - rect.top;
+    const id = Date.now();
+    setRipples(r => [...r, { x, y, id }]);
+    setTimeout(() => setRipples(r => r.filter(r => r.id !== id)), 600);
+  }, []);
+  return [ripples, trigger];
+};
+
 // ── Emoji picker ──────────────────────────────────────────────────────────────
 const EMOJIS = ['❤️', '😂', '👏', '🎉', '👍', '🔥'];
+
 const EmojiPicker = memo(({ onSelect, onClose }) => (
   <motion.div
-    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+    initial={{ opacity: 0, y: 10, scale: 0.9 }}
     animate={{ opacity: 1, y: 0, scale: 1 }}
-    exit={{ opacity: 0, y: 8, scale: 0.95 }}
-    transition={{ type: 'spring', stiffness: 420, damping: 28 }}
-    className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50
-               flex gap-0.5 p-2 rounded-2xl
-               bg-[#0d1017]/96 backdrop-blur-xl border border-white/10
-               shadow-2xl shadow-black/70"
+    exit={{ opacity: 0, y: 10, scale: 0.9 }}
+    transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+    className="flex gap-1 p-2.5 rounded-2xl
+               bg-[#0d1017]/98 backdrop-blur-2xl border border-white/12
+               shadow-2xl shadow-black/80"
+    onClick={e => e.stopPropagation()}
   >
-    {EMOJIS.map(e => (
+    {EMOJIS.map((e, i) => (
       <motion.button
-        key={e} whileHover={{ scale: 1.3, y: -5 }} whileTap={{ scale: 0.9 }}
-        onClick={() => { onSelect(e); onClose(); }}
+        key={e}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: i * 0.04 }}
+        whileHover={{ scale: 1.35, y: -6 }}
+        whileTap={{ scale: 0.85 }}
+        onClick={() => { haptic([6]); onSelect(e); onClose(); }}
         className="w-10 h-10 text-xl flex items-center justify-center rounded-xl
-                   hover:bg-white/8 transition-colors"
+                   hover:bg-white/10 active:bg-white/15 transition-colors"
       >
         {e}
       </motion.button>
@@ -112,97 +138,142 @@ const EmojiPicker = memo(({ onSelect, onClose }) => (
 EmojiPicker.displayName = 'EmojiPicker';
 
 // ── More drawer ───────────────────────────────────────────────────────────────
-const MoreDrawer = memo(({ items, onClose }) => {
-  const ref = useRef(null);
-  useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    document.addEventListener('mousedown', h);
-    document.addEventListener('touchstart', h);
-    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('touchstart', h); };
-  }, [onClose]);
-
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 10, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 10, scale: 0.96 }}
-      transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-      className="absolute bottom-full mb-2 right-0 z-50
-                 w-56 rounded-2xl overflow-hidden
-                 bg-[#0d1017]/98 backdrop-blur-xl border border-white/10
-                 shadow-2xl shadow-black/70"
-    >
-      {items.map((item, i) => (
-        <motion.button
-          key={i} whileTap={{ scale: 0.97 }}
-          onClick={() => { item.onClick?.(); onClose(); }}
-          className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors
-                      hover:bg-white/6
-                      ${i < items.length - 1 ? 'border-b border-white/5' : ''}
-                      ${item.danger ? 'text-red-400' : 'text-slate-200'}`}
-        >
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0
-            ${item.danger ? 'bg-red-500/15' : 'bg-white/6'}`}>
-            <item.icon className={`w-4 h-4 ${item.danger ? 'text-red-400' : 'text-slate-400'}`} />
-          </div>
-          <span className="flex-1 text-left font-medium">{item.label}</span>
-          {item.trailing}
-        </motion.button>
-      ))}
-    </motion.div>
-  );
-});
+const MoreDrawer = memo(({ items, onClose }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 12, scale: 0.94 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: 12, scale: 0.94 }}
+    transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+    className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50
+               w-64 rounded-2xl overflow-hidden
+               bg-[#0d1017]/98 backdrop-blur-2xl border border-white/10
+               shadow-2xl shadow-black/80"
+    onClick={e => e.stopPropagation()}
+  >
+    {items.map((item, i) => (
+      <motion.button
+        key={i}
+        whileTap={{ scale: 0.97 }}
+        onClick={() => { haptic([8]); item.onClick?.(); onClose(); }}
+        className={`w-full flex items-center gap-3 px-4 py-3.5 text-sm transition-all
+                    ${i < items.length - 1 ? 'border-b border-white/6' : ''}
+                    ${item.danger
+                      ? 'text-red-400 hover:bg-red-500/8 active:bg-red-500/14'
+                      : 'text-slate-200 hover:bg-white/5 active:bg-white/9'}`}
+      >
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors
+          ${item.danger
+            ? 'bg-red-500/15 border border-red-500/20'
+            : item.active
+              ? 'bg-blue-500/20 border border-blue-500/30'
+              : 'bg-white/6 border border-white/8'}`}>
+          <item.icon className={`w-4 h-4
+            ${item.danger ? 'text-red-400' : item.active ? 'text-blue-300' : 'text-slate-300'}`} />
+        </div>
+        <span className="flex-1 text-left font-medium text-[13px]">{item.label}</span>
+        {item.trailing}
+        {item.active && !item.trailing && (
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+        )}
+      </motion.button>
+    ))}
+  </motion.div>
+));
 MoreDrawer.displayName = 'MoreDrawer';
+
+// ── Transparent backdrop ──────────────────────────────────────────────────────
+const Backdrop = ({ onClose }) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="fixed inset-0 z-40"
+    onClick={onClose}
+  />
+);
 
 // ── Core button primitive ─────────────────────────────────────────────────────
 const Btn = memo(({
   onClick, label, title, icon: Icon, iconEl,
-  variant = 'default',   // 'default' | 'active' | 'danger' | 'end'
+  variant = 'default',
   pulse = false,
   badge = 0,
-  size = 'md',           // 'sm' | 'md' | 'lg'
+  size = 'md',
   showLabel = true,
   disabled = false,
 }) => {
-  const iconCls = { sm: 'w-4 h-4',         md: 'w-[18px] h-[18px]', lg: 'w-5 h-5'   }[size];
-  const btnCls  = { sm: 'w-9 h-9',         md: 'w-11 h-11',          lg: 'w-12 h-12' }[size];
+  const [ripples, triggerRipple] = useRipple();
+
+  const iconCls = { sm: 'w-4 h-4', md: 'w-[18px] h-[18px]', lg: 'w-5 h-5' }[size];
+  const btnCls  = { sm: 'w-9 h-9', md: 'w-11 h-11',          lg: 'w-12 h-12' }[size];
+
   const bg = {
-    default: 'bg-white/7 hover:bg-white/12 border border-white/8 text-slate-200 hover:text-white',
-    active:  'bg-blue-500/20 hover:bg-blue-500/28 border border-blue-500/35 text-blue-300',
-    danger:  'bg-red-500/18 hover:bg-red-500/28 border border-red-500/30 text-red-300',
-    end:     'bg-red-600 hover:bg-red-700 border border-red-500/40 text-white shadow-lg shadow-red-900/50',
+    default:  'bg-white/7 hover:bg-white/13 active:bg-white/18 border border-white/8 text-slate-200 hover:text-white',
+    active:   'bg-blue-500/22 hover:bg-blue-500/32 active:bg-blue-500/40 border border-blue-500/40 text-blue-300',
+    danger:   'bg-red-500/18 hover:bg-red-500/28 active:bg-red-500/36 border border-red-500/32 text-red-300',
+    end:      'bg-red-600 hover:bg-red-500 active:bg-red-700 border border-red-400/30 text-white shadow-lg shadow-red-900/60',
+    minimize: 'bg-slate-600/40 hover:bg-slate-500/50 active:bg-slate-400/50 border border-slate-500/30 text-slate-300 hover:text-white',
   }[variant];
+
+  const handleClick = useCallback((e) => {
+    if (disabled) return;
+    haptic(variant === 'end' ? [15, 8, 15] : variant === 'danger' ? [10] : [6]);
+    triggerRipple(e);
+    onClick?.(e);
+  }, [disabled, variant, triggerRipple, onClick]);
 
   return (
     <div className="relative flex flex-col items-center gap-1 select-none">
       <motion.button
-        whileTap={{ scale: 0.87 }} whileHover={{ scale: disabled ? 1 : 1.05 }}
-        onClick={onClick} disabled={disabled} title={title || label}
+        whileTap={{ scale: disabled ? 1 : 0.85 }}
+        whileHover={{ scale: disabled ? 1 : 1.06 }}
+        onClick={handleClick}
+        disabled={disabled}
+        title={title || label}
         className={`
-          ${btnCls} rounded-2xl flex items-center justify-center transition-all duration-150
-          touch-manipulation ${bg}
+          relative ${btnCls} rounded-2xl flex items-center justify-center
+          transition-all duration-150 touch-manipulation overflow-hidden
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60
+          ${bg}
           ${pulse ? 'animate-pulse' : ''}
-          ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+          ${disabled ? 'opacity-35 cursor-not-allowed' : 'cursor-pointer'}
         `}
       >
+        {/* Ripple effects */}
+        {ripples.map(r => (
+          <span
+            key={r.id}
+            className="absolute rounded-full bg-white/25 pointer-events-none"
+            style={{
+              left: r.x - 10, top: r.y - 10,
+              width: 20, height: 20,
+              animation: 'ping 0.5s cubic-bezier(0,0,0.2,1) 1',
+            }}
+          />
+        ))}
         {iconEl ?? (Icon && <Icon className={iconCls} />)}
       </motion.button>
+
       {badge > 0 && (
-        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500
-                         rounded-full flex items-center justify-center pointer-events-none
-                         text-[9px] font-bold text-white px-0.5 ring-2 ring-slate-950 z-10">
+        <motion.span
+          initial={{ scale: 0 }} animate={{ scale: 1 }}
+          className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500
+                     rounded-full flex items-center justify-center pointer-events-none
+                     text-[9px] font-bold text-white px-0.5 ring-2 ring-slate-950 z-10"
+        >
           {badge > 99 ? '99+' : badge}
-        </span>
+        </motion.span>
       )}
+
       {showLabel && label && (
         <span className={`
-          text-[10px] font-medium leading-none text-center truncate max-w-[54px]
-          pointer-events-none transition-colors
-          ${variant === 'end'    ? 'text-red-400'
-          : variant === 'danger' ? 'text-red-400'
-          : variant === 'active' ? 'text-blue-400'
-          : 'text-slate-500 group-hover:text-slate-400'}
+          text-[10px] font-medium leading-none text-center truncate max-w-[60px]
+          pointer-events-none transition-colors duration-150
+          ${variant === 'end'      ? 'text-red-400'
+          : variant === 'danger'   ? 'text-red-400'
+          : variant === 'active'   ? 'text-blue-400'
+          : variant === 'minimize' ? 'text-slate-400'
+          : 'text-slate-500'}
         `}>
           {label}
         </span>
@@ -212,7 +283,9 @@ const Btn = memo(({
 });
 Btn.displayName = 'Btn';
 
-const Divider = () => <div className="w-px h-8 bg-white/7 flex-shrink-0 mx-0.5 lg:mx-1" />;
+const Divider = () => (
+  <div className="w-px self-stretch my-1 bg-white/8 flex-shrink-0 mx-0.5 lg:mx-1" />
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CALL CONTROLS — floating pill above video
@@ -222,32 +295,61 @@ const CallControls = memo(({
   onToggleMute, onToggleVideo, onToggleScreenShare,
   onToggleRecording, onEndCall, onSwitchCamera,
   onReaction, recordingDuration = 0,
+  onMinimize,
 }) => {
-  const [showEmoji, setShowEmoji] = useState(false);
-  const [showMore,  setShowMore]  = useState(false);
+  // Only one panel open at a time
+  const [openPanel, setOpenPanel] = useState(null); // null | 'emoji' | 'more'
 
-  const [callWinW, setCallWinW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
-  useEffect(() => {
-    const handler = () => setCallWinW(window.innerWidth);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
+  const togglePanel = useCallback((name) => {
+    haptic([6]);
+    setOpenPanel(p => p === name ? null : name);
   }, []);
-  const callIsMd = callWinW >= 768; // md: screen share + record shown inline
+
+  const closeAll = useCallback(() => setOpenPanel(null), []);
+
+  const [callWinW, setCallWinW] = useState(
+    () => typeof window !== 'undefined' ? window.innerWidth : 1024,
+  );
+  useEffect(() => {
+    const h = () => setCallWinW(window.innerWidth);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  const callIsMd = callWinW >= 768;
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'm') onToggleMute?.();
+      if (e.key === 'v') onToggleVideo?.();
+      if (e.key === 's') onToggleScreenShare?.();
+      if (e.key === 'r') onToggleRecording?.();
+      if (e.key === 'Escape') closeAll();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onToggleMute, onToggleVideo, onToggleScreenShare, onToggleRecording, closeAll]);
 
   const moreItems = [
-    // Flip camera always in drawer (never shown inline)
     { icon: SwitchCamera, label: 'Flip Camera', onClick: onSwitchCamera },
-    // Screen share: shown inline md+, in drawer only on <md
-    ...(!callIsMd ? [{ icon: MonitorUp, label: isScreenSharing ? 'Stop Sharing' : 'Share Screen', onClick: onToggleScreenShare }] : []),
-    // Record: shown inline md+, in drawer only on <md
+    ...(!callIsMd ? [{
+      icon: MonitorUp,
+      label: isScreenSharing ? 'Stop Sharing' : 'Share Screen',
+      active: isScreenSharing,
+      onClick: onToggleScreenShare,
+    }] : []),
     ...(!callIsMd ? [{
       icon: isRecording ? StopCircle : Radio,
       label: isRecording ? 'Stop Recording' : 'Start Recording',
-      danger: isRecording, onClick: onToggleRecording,
+      danger: isRecording,
+      active: isRecording,
+      onClick: onToggleRecording,
       trailing: isRecording && recordingDuration > 0
         ? <span className="font-mono text-[10px] text-red-300 tabular-nums">{fmtDur(recordingDuration)}</span>
         : null,
     }] : []),
+    ...(onMinimize ? [{ icon: Minimize2, label: 'Minimize', onClick: onMinimize }] : []),
   ];
 
   return (
@@ -255,38 +357,59 @@ const CallControls = memo(({
                     pb-[env(safe-area-inset-bottom,0px)]">
       <StatusBar isRecording={isRecording} isScreenSharing={isScreenSharing} recordingDuration={recordingDuration} />
 
+      {/* Single global backdrop for all panels */}
+      <AnimatePresence>
+        {openPanel && <Backdrop onClose={closeAll} />}
+      </AnimatePresence>
+
+      {/* Emoji picker */}
+      <AnimatePresence>
+        {openPanel === 'emoji' && (
+          <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50">
+            <EmojiPicker
+              onSelect={e => { onReaction?.(e); closeAll(); }}
+              onClose={closeAll}
+            />
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* More drawer */}
+      <AnimatePresence>
+        {openPanel === 'more' && (
+          <MoreDrawer items={moreItems} onClose={closeAll} />
+        )}
+      </AnimatePresence>
+
       <div className="w-full flex justify-center px-3 pb-4 sm:pb-6">
         <motion.div
-          initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
           transition={{ type: 'spring', stiffness: 340, damping: 28, delay: 0.05 }}
-          className="relative flex items-end gap-2 sm:gap-2.5 lg:gap-3
+          className="relative z-50 flex items-center gap-2 sm:gap-2.5 lg:gap-3
                      px-3 sm:px-4 lg:px-6 py-3 sm:py-3.5
-                     bg-[#080c12]/92 backdrop-blur-2xl
+                     bg-[#080c12]/94 backdrop-blur-2xl
                      rounded-[22px] border border-white/8"
           style={{ boxShadow: '0 8px 48px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.055)' }}
         >
-
-          <Tip label={isMuted ? 'Unmute' : 'Mute'}>
-            <Btn icon={isMuted ? MicOff : Mic}   label={isMuted ? 'Unmute' : 'Mute'}
+          <Tip label={isMuted ? 'Unmute' : 'Mute'} shortcut="M">
+            <Btn icon={isMuted ? MicOff : Mic} label={isMuted ? 'Unmute' : 'Mute'}
               variant={isMuted ? 'danger' : 'default'} onClick={onToggleMute} />
           </Tip>
 
-          <Tip label={isVideoOff ? 'Start Camera' : 'Stop Camera'}>
+          <Tip label={isVideoOff ? 'Start Camera' : 'Stop Camera'} shortcut="V">
             <Btn icon={isVideoOff ? VideoOff : Video} label={isVideoOff ? 'Start' : 'Stop'}
               variant={isVideoOff ? 'danger' : 'default'} onClick={onToggleVideo} />
           </Tip>
 
-          {/* Screen share — hidden on small, shown md+ */}
           <div className="hidden md:block">
-            <Tip label={isScreenSharing ? 'Stop Sharing' : 'Share Screen'}>
+            <Tip label={isScreenSharing ? 'Stop Sharing' : 'Share Screen'} shortcut="S">
               <Btn icon={MonitorUp} label={isScreenSharing ? 'Sharing' : 'Share'}
                 variant={isScreenSharing ? 'active' : 'default'} onClick={onToggleScreenShare} />
             </Tip>
           </div>
 
-          {/* Record — hidden on small, shown md+ */}
           <div className="hidden md:block">
-            <Tip label={isRecording ? 'Stop Recording' : 'Record'}>
+            <Tip label={isRecording ? 'Stop Recording' : 'Record'} shortcut="R">
               <Btn icon={isRecording ? StopCircle : Radio}
                 label={isRecording ? fmtDur(recordingDuration) : 'Record'}
                 variant={isRecording ? 'danger' : 'default'} pulse={isRecording}
@@ -294,36 +417,29 @@ const CallControls = memo(({
             </Tip>
           </div>
 
-          {/* Reactions */}
-          <div className="relative">
-            <AnimatePresence>
-              {showEmoji && (
-                <EmojiPicker onSelect={e => onReaction?.(e)} onClose={() => setShowEmoji(false)} />
-              )}
-            </AnimatePresence>
-            <Tip label="Reactions">
-              <Btn iconEl={<Smile className="w-[18px] h-[18px]" />} label="React"
-                variant={showEmoji ? 'active' : 'default'} onClick={() => setShowEmoji(v => !v)} />
-            </Tip>
-          </div>
+          <Tip label="Reactions">
+            <Btn
+              iconEl={<Smile className="w-[18px] h-[18px]" />}
+              label="React"
+              variant={openPanel === 'emoji' ? 'active' : 'default'}
+              onClick={() => togglePanel('emoji')}
+            />
+          </Tip>
 
-          {/* More — hides overflow items on small screens */}
-          <div className="relative">
-            <AnimatePresence>
-              {showMore && <MoreDrawer items={moreItems} onClose={() => setShowMore(false)} />}
-            </AnimatePresence>
-            <Tip label="More">
-              <Btn icon={MoreHorizontal} label="More"
-                variant={showMore ? 'active' : 'default'} onClick={() => setShowMore(v => !v)} />
-            </Tip>
-          </div>
+          <Tip label="More options">
+            <Btn
+              icon={MoreHorizontal}
+              label="More"
+              variant={openPanel === 'more' ? 'active' : 'default'}
+              onClick={() => togglePanel('more')}
+            />
+          </Tip>
 
           <Divider />
 
-          <Tip label="End Call">
+          <Tip label="End Call" shortcut="⌘W">
             <Btn icon={PhoneOff} label="End" variant="end" size="lg" onClick={onEndCall} />
           </Tip>
-
         </motion.div>
       </div>
     </div>
@@ -345,40 +461,67 @@ const MeetingControls = memo(({
   viewMode, onToggleViewMode,
   onRaiseHand, handRaised,
   raisedHandCount = 0,
-  // ── MUTE SYSTEM ──────────────────────────────────────────────────────────
-  isHost          = false,   // only host sees Mute Everyone
-  isForceMuted    = false,   // this user was muted by host
-  allowSelfUnmute = true,    // host's permission flag
-  onMuteAll,                 // host action: mute all
-  onToggleAllowUnmute,       // host action: toggle self-unmute permission
-  // ─────────────────────────────────────────────────────────────────────────
+  isHost          = false,
+  isForceMuted    = false,
+  allowSelfUnmute = true,
+  onMuteAll,
+  onToggleAllowUnmute,
   onReaction,
   unreadCount = 0,
   recordingDuration = 0,
+  onMinimize,
 }) => {
-  const [showEmoji, setShowEmoji] = useState(false);
-  const [showMore,  setShowMore]  = useState(false);
+  const [openPanel, setOpenPanel] = useState(null); // null | 'emoji' | 'more'
 
-  // useWindowWidth tracks viewport width so moreItems only contains
-  // actions NOT already visible inline in the bar.
-  // md = 640px: Hand becomes inline. lg = 1024px: View + Record become inline.
-  const [winW, setWinW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
-  useEffect(() => {
-    const handler = () => setWinW(window.innerWidth);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
+  const togglePanel = useCallback((name) => {
+    haptic([6]);
+    setOpenPanel(p => p === name ? null : name);
   }, []);
-  const isMd = winW >= 640;   // matches Tailwind md:
-  const isLg = winW >= 1024;  // matches Tailwind lg:
 
-  // Build drawer items — only include what's NOT shown inline
+  const closeAll = useCallback(() => setOpenPanel(null), []);
+
+  const [winW, setWinW] = useState(
+    () => typeof window !== 'undefined' ? window.innerWidth : 1024,
+  );
+  useEffect(() => {
+    const h = () => setWinW(window.innerWidth);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  const isMd = winW >= 640;
+  const isLg = winW >= 1024;
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'm') onToggleMute?.();
+      if (e.key === 'v') onToggleVideo?.();
+      if (e.key === 's') onToggleScreenShare?.();
+      if (e.key === 'r') onToggleRecording?.();
+      if (e.key === 'c') onToggleChat?.();
+      if (e.key === 'p') onToggleParticipants?.();
+      if (e.key === 'h') onRaiseHand?.();
+      if (e.key === 'Escape') closeAll();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onToggleMute, onToggleVideo, onToggleScreenShare, onToggleRecording,
+      onToggleChat, onToggleParticipants, onRaiseHand, closeAll]);
+
   const moreItems = [
-    // Raise hand: hidden on <md, shown inline md+, so only show in drawer on <md
-    ...(!isMd ? [{ icon: Hand, label: handRaised ? 'Lower Hand' : 'Raise Hand', onClick: onRaiseHand }] : []),
-    // View toggle: hidden on <lg, shown inline lg+
-    ...(!isLg ? [{ icon: viewMode === 'grid' ? UserCheck : LayoutGrid,
-      label: viewMode === 'grid' ? 'Speaker View' : 'Grid View', onClick: onToggleViewMode }] : []),
-    // ── MUTE SYSTEM: host-only actions ──────────────────────────────────
+    ...(!isMd ? [{ icon: Hand, label: handRaised ? 'Lower Hand' : 'Raise Hand', active: handRaised, onClick: onRaiseHand }] : []),
+    ...(!isMd ? [{
+      icon: Users,
+      label: `People${participantCount > 0 ? ` (${participantCount})` : ''}`,
+      active: isParticipantsOpen,
+      onClick: onToggleParticipants,
+    }] : []),
+    ...(!isLg ? [{
+      icon: viewMode === 'grid' ? UserCheck : LayoutGrid,
+      label: viewMode === 'grid' ? 'Speaker View' : 'Grid View',
+      onClick: onToggleViewMode,
+    }] : []),
     ...(isHost ? [
       { icon: MuteAllIcon, label: 'Mute Everyone', onClick: onMuteAll },
       {
@@ -387,63 +530,66 @@ const MeetingControls = memo(({
         onClick: () => onToggleAllowUnmute?.(!allowSelfUnmute),
       },
     ] : []),
-    // Record: hidden on <lg, shown inline lg+
     ...(!isLg ? [{
       icon: isRecording ? StopCircle : Radio,
       label: isRecording ? 'Stop Recording' : 'Start Recording',
-      danger: isRecording, onClick: onToggleRecording,
+      danger: isRecording,
+      active: isRecording,
+      onClick: onToggleRecording,
       trailing: isRecording && recordingDuration > 0
         ? <span className="font-mono text-[10px] text-red-300 tabular-nums">{fmtDur(recordingDuration)}</span>
         : null,
     }] : []),
+    ...(onMinimize && !isLg ? [{ icon: Minimize2, label: 'Minimize', onClick: onMinimize }] : []),
   ];
 
   return (
     <div
-      className="relative bg-[#07090f]/95 backdrop-blur-2xl border-t border-white/6
+      className="relative bg-[#07090f]/40 backdrop-blur-xl border-t border-white/4
                  pb-[env(safe-area-inset-bottom,0px)]"
-      style={{ boxShadow: '0 -1px 0 rgba(255,255,255,0.035), 0 -12px 40px rgba(0,0,0,0.55)' }}
+      style={{ boxShadow: '0 -1px 0 rgba(255,255,255,0.02), 0 -16px 48px rgba(0,0,0,0.3)' }}
     >
       <StatusBar isRecording={isRecording} isScreenSharing={isScreenSharing} recordingDuration={recordingDuration} />
 
-      {/* Reaction picker — centred above bar */}
+      {/* Single global backdrop */}
       <AnimatePresence>
-        {showEmoji && (
-          <div className="absolute bottom-full left-0 right-0 z-50 flex justify-center pointer-events-none">
+        {openPanel && <Backdrop onClose={closeAll} />}
+      </AnimatePresence>
+
+      {/* Emoji picker — centered above bar */}
+      <AnimatePresence>
+        {openPanel === 'emoji' && (
+          <div className="absolute bottom-full left-0 right-0 z-50 flex justify-center pb-3 pointer-events-none">
             <div className="pointer-events-auto">
-              <EmojiPicker onSelect={e => onReaction?.(e)} onClose={() => setShowEmoji(false)} />
+              <EmojiPicker
+                onSelect={e => { onReaction?.(e); closeAll(); }}
+                onClose={closeAll}
+              />
             </div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* More drawer — moved inside the More button's relative container below */}
+      {/* More drawer */}
+      <AnimatePresence>
+        {openPanel === 'more' && (
+          <MoreDrawer items={moreItems} onClose={closeAll} />
+        )}
+      </AnimatePresence>
 
-      {/* ── Button row
-           Layout rules:
-           • xs (<480px):  mute · cam · [share] · chat · people · react · more · END
-           • sm (480+):    + screen share visible, more compact
-           • md (640+):    + raise hand, record in More still
-           • lg (1024+):   + view toggle, record visible, full spacing
-          ── */}
       <div className="flex items-center justify-center flex-wrap sm:flex-nowrap
                       gap-0.5 xs:gap-1 sm:gap-1.5 lg:gap-2
                       px-2 sm:px-4 lg:px-8 py-2.5 sm:py-3 lg:py-3.5">
 
-        {/* ── PRIMARY ── */}
-        {/* Mic button: shows a locked red state when host has force-muted and
-            self-unmute is disabled, amber "tap to unmute" state when allowed */}
+        {/* Mic */}
         <Tip label={
-          isForceMuted && !allowSelfUnmute
-            ? 'Muted by host (locked)'
-            : isForceMuted && allowSelfUnmute
-              ? 'Muted by host — tap to unmute'
-              : isMuted ? 'Unmute' : 'Mute'
-        }>
+          isForceMuted && !allowSelfUnmute ? 'Muted by host (locked)'
+          : isForceMuted ? 'Muted by host — tap to unmute'
+          : isMuted ? 'Unmute' : 'Mute'
+        } shortcut="M">
           <div className="relative">
-            {/* Locked pulse ring when host has disabled self-unmute */}
             {isForceMuted && !allowSelfUnmute && (
-              <span className="absolute inset-0 rounded-2xl animate-ping bg-red-500/25 pointer-events-none" />
+              <span className="absolute inset-0 rounded-2xl animate-ping bg-red-500/20 pointer-events-none" />
             )}
             <Btn
               icon={isMuted ? MicOff : Mic}
@@ -452,62 +598,65 @@ const MeetingControls = memo(({
               onClick={onToggleMute}
               disabled={isForceMuted && !allowSelfUnmute}
             />
-            {/* Host-muted badge — small lock icon overlaid on button */}
             {isForceMuted && (
-              <span
+              <motion.span
+                initial={{ scale: 0 }} animate={{ scale: 1 }}
                 className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center
-                           pointer-events-none z-10 ring-2 ring-slate-950
-                           bg-red-600 text-white text-[9px] font-bold"
-                title={allowSelfUnmute ? 'Muted by host' : 'Muted by host (locked)'}
+                           pointer-events-none z-10 ring-2 ring-slate-950 bg-red-600 text-white text-[9px] font-bold"
               >
                 {allowSelfUnmute ? '!' : '🔒'}
-              </span>
+              </motion.span>
             )}
           </div>
         </Tip>
 
-        <Tip label={isVideoOff ? 'Start Camera' : 'Stop Camera'}>
+        <Tip label={isVideoOff ? 'Start Camera' : 'Stop Camera'} shortcut="V">
           <Btn icon={isVideoOff ? VideoOff : Video} label={isVideoOff ? 'Start' : 'Camera'}
             variant={isVideoOff ? 'danger' : 'default'} onClick={onToggleVideo} />
         </Tip>
 
-        <Tip label={isScreenSharing ? 'Stop Sharing' : 'Share Screen'}>
+        <Tip label={isScreenSharing ? 'Stop Sharing' : 'Share Screen'} shortcut="S">
           <Btn icon={MonitorUp} label={isScreenSharing ? 'Sharing' : 'Share'}
             variant={isScreenSharing ? 'active' : 'default'} onClick={onToggleScreenShare} />
         </Tip>
 
         <div className="hidden sm:block"><Divider /></div>
 
-        {/* ── SECONDARY ── */}
-        <Tip label="Chat">
+        <Tip label="Chat" shortcut="C">
           <Btn icon={MessageCircle} label="Chat"
             variant={isChatOpen ? 'active' : 'default'}
             badge={isChatOpen ? 0 : unreadCount}
             onClick={onToggleChat} />
         </Tip>
 
-        <Tip label={`People (${participantCount})`}>
-          <Btn icon={Users}
-            label={participantCount > 0 ? `${participantCount}` : 'People'}
-            variant={isParticipantsOpen ? 'active' : 'default'}
-            onClick={onToggleParticipants} />
+<div className="hidden sm:block">
+  <Tip label={`People (${participantCount})`} shortcut="P">
+    <Btn icon={Users}
+      label={participantCount > 0 ? `${participantCount}` : 'People'}
+      variant={isParticipantsOpen ? 'active' : 'default'}
+      onClick={onToggleParticipants} />
+  </Tip>
+</div>
+    
+
+        {/* React */}
+        <Tip label="Reactions">
+          <Btn
+            iconEl={<Smile className="w-[18px] h-[18px]" />}
+            label="React"
+            variant={openPanel === 'emoji' ? 'active' : 'default'}
+            onClick={() => togglePanel('emoji')}
+          />
         </Tip>
 
-        {/* Reactions */}
-        <div className="relative">
-          <Tip label="Reactions">
-            <Btn iconEl={<Smile className="w-[18px] h-[18px]" />} label="React"
-              variant={showEmoji ? 'active' : 'default'} onClick={() => setShowEmoji(v => !v)} />
-          </Tip>
-        </div>
-
-        {/* ── RAISE HAND: md+ inline — amber pulse ring when others have hands up ── */}
+        {/* Raise hand — md+ inline */}
         <div className="hidden md:block">
-          <Tip label={handRaised ? 'Lower Hand ✋' : raisedHandCount > 0 ? `Raise Hand (${raisedHandCount} raised)` : 'Raise Hand'}>
+          <Tip label={handRaised ? 'Lower Hand ✋'
+            : raisedHandCount > 0 ? `Raise Hand (${raisedHandCount} raised)` : 'Raise Hand'}
+            shortcut="H">
             <div className="relative">
-              {/* Amber pulse ring shown when there are raised hands and own hand is down */}
               {raisedHandCount > 0 && !handRaised && (
-                <span className="absolute inset-0 rounded-2xl animate-ping bg-amber-400/30 pointer-events-none" />
+                <span className="absolute inset-0 rounded-2xl animate-ping bg-amber-400/25 pointer-events-none" />
               )}
               <Btn
                 icon={Hand}
@@ -531,7 +680,7 @@ const MeetingControls = memo(({
 
         {/* Record — lg+ inline */}
         <div className="hidden lg:block">
-          <Tip label={isRecording ? 'Stop Recording' : 'Record'}>
+          <Tip label={isRecording ? 'Stop Recording' : 'Record'} shortcut="R">
             <Btn icon={isRecording ? StopCircle : Radio}
               label={isRecording ? fmtDur(recordingDuration) : 'Record'}
               variant={isRecording ? 'danger' : 'default'} pulse={isRecording}
@@ -539,23 +688,32 @@ const MeetingControls = memo(({
           </Tip>
         </div>
 
-        {/* More — drawer anchored directly above this button */}
-        <div className="relative">
-          <AnimatePresence>
-            {showMore && (
-              <MoreDrawer items={moreItems} onClose={() => setShowMore(false)} />
-            )}
-          </AnimatePresence>
-          <Tip label="More">
-            <Btn icon={MoreHorizontal} label="More"
-              variant={showMore ? 'active' : 'default'} onClick={() => setShowMore(v => !v)} />
-          </Tip>
-        </div>
+        {/* Minimize — lg+ inline */}
+        {onMinimize && (
+          <div className="hidden lg:block">
+            <Tip label="Minimize call">
+              <Btn icon={Minimize2} label="Min" variant="minimize" onClick={onMinimize} />
+            </Tip>
+          </div>
+        )}
+
+
+{/* More — only show when there are items to display */}
+{moreItems.length > 0 && (
+  <Tip label="More options">
+    <Btn
+      icon={MoreHorizontal}
+      label="More"
+      variant={openPanel === 'more' ? 'active' : 'default'}
+      onClick={() => togglePanel('more')}
+    />
+  </Tip>
+)}
+
 
         <div className="hidden sm:block"><Divider /></div>
 
-        {/* ── END — always last, always red ── */}
-        <Tip label="Leave">
+        <Tip label="Leave call" shortcut="⌘W">
           <Btn icon={PhoneOff} label="End" variant="end" size="lg" onClick={onEndCall} />
         </Tip>
 

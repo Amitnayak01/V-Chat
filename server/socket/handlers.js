@@ -220,6 +220,35 @@ export const handleSocketConnection = (io) => {
         console.log(`📵 Call cancelled by ${callerId} to ${receiverId}`);
       }
     });
+
+
+
+    socket.on('invite-to-video-room', ({ roomId, inviterId, inviterName, inviterAvatar, inviteeId }) => {
+  const inviteeSocket = userSockets.get(inviteeId);
+  if (inviteeSocket) {
+    io.to(inviteeSocket).emit('incoming-video-invite', {
+      roomId, inviterId, inviterName, inviterAvatar,
+    });
+  } else {
+    socket.emit('invite-failed', { message: 'User is offline', inviteeId });
+  }
+});
+
+socket.on('video-invite-accepted', ({ roomId, inviterId, acceptorId, acceptorName }) => {
+  const inviterSocket = userSockets.get(inviterId);
+  if (inviterSocket) {
+    io.to(inviterSocket).emit('invite-accepted', { roomId, acceptorId, acceptorName });
+  }
+});
+
+socket.on('video-invite-rejected', ({ inviterId, rejectorName, inviteeId }) => {
+  const inviterSocket = userSockets.get(inviterId);
+  if (inviterSocket) {
+    io.to(inviterSocket).emit('invite-rejected', { rejectorName, inviteeId });
+  }
+});
+ 
+
     // ── join-room ──────────────────────────────────────────────────────────
     socket.on('join-room', async ({ roomId, userId, username, avatar }) => {
       try {

@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Video, Link as LinkIcon, Search, Plus, Users,
   Share2, Clock, Zap, Calendar, ArrowRight,
-  CheckCheck, Sparkles,RefreshCw,
+  CheckCheck, Sparkles,
   Home, MessageCircle, History, Settings as SettingsIcon,
   Phone,
 } from 'lucide-react';
@@ -160,19 +160,12 @@ const MobileBottomNav = ({ activeView, onNavigate, unreadChats, user }) => (
 /* ─────────────────────────────────────────────
    Meetings View
 ───────────────────────────────────────────── */
-const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigate, onRefresh }) => {
+const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigate }) => {
   const [joinInput,     setJoinInput]     = useState('');
   const [joinError,     setJoinError]     = useState('');
   const [searchQuery,   setSearchQuery]   = useState('');
   const [copied,        setCopied]        = useState(false);
-  const [isRefreshing,  setIsRefreshing]  = useState(false);
 
-  const handleRefresh = async () => {
-    if (isRefreshing) return;
-    setIsRefreshing(true);
-    await onRefresh?.();
-    setTimeout(() => setIsRefreshing(false), 800);
-  };
   const [recentRooms, setRecentRooms] = useState(() => {
     try { return JSON.parse(localStorage.getItem('vmeet_recent_rooms') || '[]'); }
     catch { return []; }
@@ -300,16 +293,6 @@ const MeetingsView = ({ user, onStart, onJoin, onCopyLink, onCallUser, onNavigat
           className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold border bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-all"
         >
           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> View History
-        </button>
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold border bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <RefreshCw
-            className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isRefreshing ? 'animate-spin' : ''}`}
-          />
-          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
       {/* Recent Rooms */}
@@ -548,13 +531,6 @@ window.dispatchEvent(new CustomEvent('outgoing-call-started', {
 
 };
 
-
-
-const handleRefresh = useCallback(async () => {
-    await refreshUnread();
-    toast.success('Dashboard refreshed!', { icon: '🔄', duration: 1500 });
-  }, [refreshUnread]);
-
   const handleNavigate = (view) => {
     navigate(VIEW_TO_PATH[view] || '/dashboard');
   };
@@ -573,7 +549,6 @@ const handleRefresh = useCallback(async () => {
             onCopyLink={handleCopyLink}
             onCallUser={handleCallUser}
             onNavigate={handleNavigate}
-            onRefresh={handleRefresh}
           />
         );
       case 'chats':

@@ -3,7 +3,9 @@ import {
 } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence }   from 'framer-motion';
-import { MessageCircle, Copy, RefreshCw, Share2 } from 'lucide-react';
+import { MessageCircle, Copy, RefreshCw, Share2, Minimize2, UserPlus } from 'lucide-react';
+import InviteParticipantsModal from './InviteParticipantsModal';
+
 import toast                         from 'react-hot-toast';
 
 import VideoGrid         from './VideoGrid';
@@ -19,7 +21,7 @@ import { useAuth }   from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { useWebRTC } from '../../context/WebRTCContext';
 import useActiveSpeaker from '../../hooks/useActiveSpeaker';
-
+import { useMinimizedCall } from '../../context/MinimizedCallContext';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VideoRoom = () => {
@@ -48,6 +50,7 @@ const VideoRoom = () => {
   const [recordings,           setRecordings]            = useState([]);
   const [isReconnecting,       setIsReconnecting]        = useState(false);
   const [isShareModalOpen,     setIsShareModalOpen]      = useState(false);
+  const [isInviteModalOpen,    setIsInviteModalOpen]     = useState(false);
   const [handRaised,           setHandRaised]            = useState(false);
   const [handRaisedMap,        setHandRaisedMap]         = useState(() => new Map());
   const [handNotifications,    setHandNotifications]     = useState([]);
@@ -83,6 +86,7 @@ const VideoRoom = () => {
   const pendingOfferRef      = useRef(new Set());
   // 45-second no-answer timer
   const noAnswerTimerRef = useRef(null);
+  const isMinimizingRef = useRef(false);
 
   // ── External hooks ───────────────────────────────────────────────────────
  
@@ -106,7 +110,7 @@ const { user }     = useAuth();
   } = useWebRTC();
 
   const activeSpeaker = useActiveSpeaker(user._id, localStream, remoteStreams);
-
+  const { minimizeCall } = useMinimizedCall();
   // ── Navigate back to wherever the caller came from ────────────────────────
   // Before navigating into a room, callers must save:
   //   sessionStorage.setItem('vmeet_return_path', window.location.pathname)
@@ -190,6 +194,14 @@ const { user }     = useAuth();
 
 
  return () => {
+      // ── Skip teardown when minimizing so streams stay alive ──
+      if (isMinimizingRef.current) {
+        isMinimizingRef.current = false;
+        hasJoined.current       = false;
+        otherJoinedRef.current  = false;
+        return;
+      }
+
       if (noAnswerTimerRef.current) {
         clearTimeout(noAnswerTimerRef.current);
         noAnswerTimerRef.current = null;
@@ -897,7 +909,17 @@ const handleEndCall = useCallback(() => {
   navigateBack();
 }, [isRecording, navigateBack, emit, roomId, user._id, clearCurrentRoom]);
 
-
+const handleMinimize = useCallback(() => {
+  if (isRecording) { toast.error('Stop recording before minimizing'); return; }
+  isMinimizingRef.current = true;
+  minimizeCall({
+    roomId,
+    userId:        user._id,
+    localUsername: user.username,
+    participants,
+  });
+  navigateBack();
+}, [isRecording, roomId, user, participants, minimizeCall, navigateBack]);
 
   // ── Hand raise ────────────────────────────────────────────────────────────
   const handleRaiseHand = useCallback(() => {
@@ -927,6 +949,17 @@ const handleEndCall = useCallback(() => {
     pushEvent('reaction', { username: user.username, emoji });
     emit('send-reaction', { roomId, userId: user._id, username: user.username, emoji });
   }, [pushEvent, showFloat, user, roomId, emit]);
+
+  const handleInviteParticipant = useCallback((contact) => {
+  emit('invite-to-video-room', {
+    roomId,
+    inviterId:     user._id,
+    inviterName:   user.username,
+    inviterAvatar: user.avatar,
+    inviteeId:     contact._id,
+  });
+  toast.success(`Invite sent to ${contact.username}`);
+}, [emit, roomId, user]);
 
   // ── Pin ───────────────────────────────────────────────────────────────────
   const handlePin = useCallback((uid) => {
@@ -999,6 +1032,7 @@ const handleEndCall = useCallback(() => {
     onToggleScreenShare:  handleToggleScreenShare,
     onToggleRecording:    handleToggleRecording,
     onEndCall:            handleEndCall,
+    onMinimize:           handleMinimize,
     onSwitchCamera:       handleSwitchCamera,
     participantCount:     participants.length,
     onToggleChat: () => setIsChatOpen(o => {
@@ -1051,22 +1085,39 @@ const handleEndCall = useCallback(() => {
           <div className="flex-shrink-0 z-20 px-3 sm:px-5 py-2.5 bg-slate-900
                           border-b border-white/10 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <h2 className="hidden sm:block text-white font-semibold text-xs sm:text-sm
-                             font-mono tracking-widest truncate sm:max-w-[200px]">
-                {roomId}
-              </h2>
+            
               <button
                 onClick={() => setIsShareModalOpen(true)}
-                className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full
+                className="flex items-center gap-1px-2.5 py-1 rounded-full
                            bg-blue-500/20 hover:bg-blue-500/30 text-blue-300
                            border border-blue-500/30 text-xs transition-all"
               >
-                <Share2 className="w-3 h-3" /><span>Share</span>
+                <Share2 className="w-3 h-3" /><span className="hidden sm:inline">Share</span>
               </button>
+
+              <button
+  onClick={() => setIsInviteModalOpen(true)}
+  className="flex items-center gap-1 px-2.5 py-1 rounded-full
+             bg-green-500/20 hover:bg-green-500/30 text-green-300
+             border border-green-500/30 text-xs transition-all"
+>
+  <UserPlus className="w-3 h-3" />
+  <span className="hidden sm:inline">Add</span>
+</button>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <ModeToggle mode={mode} onToggle={toggleMode} />
-            </div>
+       
+       <div className="flex items-center gap-2 flex-shrink-0">
+  <ModeToggle mode={mode} onToggle={toggleMode} />
+  <button
+    onClick={handleMinimize}
+    className="flex items-center gap-1 px-2.5 py-1 rounded-full
+               bg-white/10 hover:bg-white/20 text-white text-xs transition-all"
+  >
+    <Minimize2 className="w-3 h-3" />
+    <span className="hidden sm:inline">Minimize</span>
+  </button>
+</div>
+
           </div>
         ) : (
           <AnimatePresence>
@@ -1077,32 +1128,41 @@ const handleEndCall = useCallback(() => {
                            bg-gradient-to-b from-black/60 to-transparent"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h2 className="hidden sm:block text-white font-semibold text-xs sm:text-sm
-                                   font-mono tracking-widest truncate">
-                      {roomId}
-                    </h2>
-                    <button
-                      onClick={copyRoomLink}
-                      className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full
-                                 bg-white/10 hover:bg-white/20 text-white text-xs transition-all"
-                    >
-                      <Copy className="w-3 h-3" /> Copy
-                    </button>
-                    <button
-                      onClick={() => setIsShareModalOpen(true)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full
-                                 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300
-                                 border border-blue-500/30 text-xs transition-all"
-                    >
-                      <Share2 className="w-3 h-3" />
-                      <span className="hidden sm:inline">Share</span>
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <ModeToggle mode={mode} onToggle={toggleMode} />
-                    <button
-                      onClick={() => { setIsChatOpen(o => !o); setUnreadCount(0); }}
+            
+<div className="flex items-center gap-2 min-w-0">
+  <button
+    onClick={() => setIsShareModalOpen(true)}
+    className="flex items-center gap-1 px-2.5 py-1 rounded-full
+               bg-blue-500/20 hover:bg-blue-500/30 text-blue-300
+               border border-blue-500/30 text-xs transition-all"
+  >
+    <Share2 className="w-3 h-3" />
+    <span className="hidden sm:inline">Share</span>
+  </button>
+  <button
+    onClick={() => setIsInviteModalOpen(true)}
+    className="flex items-center gap-1 px-2.5 py-1 rounded-full
+               bg-green-500/20 hover:bg-green-500/30 text-green-300
+               border border-green-500/30 text-xs transition-all"
+  >
+    <UserPlus className="w-3 h-3" />
+    <span className="hidden sm:inline">Add</span>
+  </button>
+</div>
+
+
+<div className="flex items-center gap-2 flex-shrink-0">
+  <ModeToggle mode={mode} onToggle={toggleMode} />
+  <button
+    onClick={handleMinimize}
+    className="flex items-center gap-1 px-2.5 py-1 rounded-full
+               bg-white/10 hover:bg-white/20 text-white text-xs transition-all"
+  >
+    <Minimize2 className="w-3 h-3" />
+    <span className="hidden sm:inline">Minimize</span>
+  </button>
+  <button
+    onClick={() => { setIsChatOpen(o => !o); setUnreadCount(0); }}
                       className="relative w-8 h-8 rounded-full bg-white/10 hover:bg-white/20
                                  flex items-center justify-center text-white transition-all"
                     >
@@ -1236,6 +1296,13 @@ const handleEndCall = useCallback(() => {
         onDownloadRecording={handleDownloadRecording}
         recordingDuration={recordingDuration}
       />
+
+      <InviteParticipantsModal
+  isOpen={isInviteModalOpen}
+  onClose={() => setIsInviteModalOpen(false)}
+  onInvite={handleInviteParticipant}
+  currentParticipantIds={participants.map(p => p.userId ?? p)}
+/>
     </div>
   );
 };
