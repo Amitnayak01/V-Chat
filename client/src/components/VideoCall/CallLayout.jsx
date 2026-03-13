@@ -1,10 +1,27 @@
-import { useState, useRef, useCallback, useMemo, memo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect, memo } from 'react';
 import { motion } from 'framer-motion';
 import VideoTile from './VideoTile';
 import ScreenShareView from './ScreenShareView';
 
 const toMap = (rs) =>
   rs instanceof Map ? rs : new Map(Object.entries(rs ?? {}));
+
+// ── Responsive hook: watches the container size ───────────────────────────────
+function useContainerSize(ref) {
+  const [size, setSize] = useState({ width: 0, height: 0, isLandscape: false });
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize({ width, height, isLandscape: width > height });
+    });
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return size;
+}
 
 const CallLayout = memo(({
   localStream,
@@ -22,14 +39,17 @@ const CallLayout = memo(({
   hostMutedIds    = new Set(),  // ── MUTE CONTROL: Set of userId muted by host
 }) => {
   // ── ALL hooks declared unconditionally at the top ──────────────────────
+  const containerRef = useRef(null);
+  const { isLandscape } = useContainerSize(containerRef);
+
   const [swapped,  setSwapped]  = useState(false);
   const [pipPos,   setPipPos]   = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef({ mx: 0, my: 0, px: 0, py: 0 });
 
-  const remoteMap = useMemo(() => toMap(remoteStreams), [remoteStreams]);
+  const remoteMap     = useMemo(() => toMap(remoteStreams), [remoteStreams]);
   const remoteEntries = useMemo(() => Array.from(remoteMap.entries()), [remoteMap]);
-  const totalCount = 1 + remoteEntries.length;
+  const totalCount    = 1 + remoteEntries.length;
 
   const getUsername = useCallback((uid) => {
     const p = participants.find(p => (p.userId ?? p) === uid);
@@ -56,7 +76,7 @@ const CallLayout = memo(({
     })),
   ], [localUserId, localStream, localUsername, isMuted, isVideoOff, remoteEntries, getUsername, hostMutedIds]);
 
-  // PIP drag handlers — must be declared even when screen sharing
+  // PIP drag handlers — declared unconditionally
   const onPointerDown = useCallback((e) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -76,29 +96,35 @@ const CallLayout = memo(({
 
   if (screenInfo) {
     return (
-      <ScreenShareView
-        screenStream={screenInfo.stream}
-        isLocalSharing={screenInfo.isLocal}
-        presenterName={screenInfo.name}
-        onStopSharing={screenInfo.isLocal ? onStopSharing : undefined}
-        onControlsReveal={onControlsReveal}
-      />
+      <div ref={containerRef} className="w-full h-full">
+        <ScreenShareView
+          screenStream={screenInfo.stream}
+          isLocalSharing={screenInfo.isLocal}
+          presenterName={screenInfo.name}
+          onStopSharing={screenInfo.isLocal ? onStopSharing : undefined}
+          onControlsReveal={onControlsReveal}
+        />
+      </div>
     );
   }
 
   // ── Solo view ─────────────────────────────────────────────────────────
   if (totalCount === 1) {
     return (
-      <div className="w-full h-full relative bg-black">
-        <VideoTile stream={localStream} username={localUsername}
+      <div ref={containerRef} className="w-full h-full relative bg-black">
+        <VideoTile
+          stream={localStream} username={localUsername}
           isMuted={isMuted} isVideoOff={isVideoOff} isLocal
-          className="w-full h-full rounded-none" />
+          className="w-full h-full rounded-none"
+        />
         <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
       </div>
     );
   }
 
-  // ── 2-person: remote fills screen, local PIP draggable in top-right ───
+  // ── 2-person ──────────────────────────────────────────────────────────
+  // Portrait/mobile : remote fills screen, local PIP top-right
+  // Landscape/desktop: side-by-side equal halves
   if (totalCount === 2) {
     const remoteId     = remoteEntries[0][0];
     const remoteStream = remoteEntries[0][1];
@@ -113,9 +139,34 @@ const CallLayout = memo(({
     const pipIsLocal  = !swapped;
     const pipId       = swapped ? remoteId     : localUserId;
 
+    if (isLandscape) {
+      // Desktop: two equal side-by-side tiles
+      return (
+        <div ref={containerRef} className="w-full h-full bg-black flex" style={{ gap: 4, padding: 4 }}>
+          {[
+            { id: remoteId,    stream: remoteStream, username: getUsername(remoteId), isLocal: false },
+            { id: localUserId, stream: localStream,  username: localUsername,         isLocal: true  },
+          ].map(t => (
+            <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
+              <VideoTile
+                stream={t.stream}
+                username={t.username}
+                isMuted={t.isLocal ? isMuted : hostMutedIds.has(t.id)}
+                isVideoOff={t.isLocal ? isVideoOff : false}
+                isLocal={t.isLocal}
+                isMutedByHost={!t.isLocal && hostMutedIds.has(t.id)}
+                isActive={activeSpeaker === t.id}
+                className="w-full h-full rounded-none"
+              />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Mobile portrait: remote full-screen + draggable PIP top-right
     return (
-      <div className="w-full h-full relative overflow-hidden bg-black">
-        {/* Remote fills entire screen */}
+      <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-black">
         <VideoTile
           stream={mainStream}
           username={mainUsername}
@@ -126,12 +177,10 @@ const CallLayout = memo(({
           isActive={activeSpeaker === mainId}
           className="w-full h-full rounded-none"
         />
-
-        {/* Subtle gradient overlays */}
         <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
 
-        {/* Local PIP — draggable, anchored top-right, tap to swap */}
+        {/* Draggable PIP — top-right */}
         <div
           className="absolute z-30 select-none"
           style={{
@@ -172,26 +221,64 @@ const CallLayout = memo(({
     );
   }
 
-  // ── 3-person: top row 2 equal tiles, bottom row 1 full-width tile ─────
+  // ── 3-person ──────────────────────────────────────────────────────────
+  // Portrait/mobile : 2 equal tiles top row, 1 full-width bottom
+  // Landscape/desktop: 1 large tile left (2/3), 2 stacked tiles right (1/3)
   if (totalCount === 3) {
-    // Active speaker (or first remote) goes full-width on the bottom
     const active = remoteEntries.find(([uid]) => uid === activeSpeaker);
-    const [bottomId, bottomStream] = active ?? remoteEntries[0];
-    const bottomUsername = getUsername(bottomId);
+    const [featuredId, featuredStream] = active ?? remoteEntries[0];
+    const featuredUsername = getUsername(featuredId);
 
-    // The other two tiles share the top row
-    const topTiles = [
+    const otherTiles = [
       { id: localUserId, stream: localStream, username: localUsername, isLocal: true },
       ...remoteEntries
-        .filter(([uid]) => uid !== bottomId)
+        .filter(([uid]) => uid !== featuredId)
         .map(([uid, s]) => ({ id: uid, stream: s, username: getUsername(uid), isLocal: false })),
     ];
 
+    if (isLandscape) {
+      // Desktop: large featured left + 2 stacked right
+      return (
+        <div ref={containerRef} className="w-full h-full bg-black flex" style={{ gap: 4, padding: 4 }}>
+          {/* Large left tile (active speaker / first remote) */}
+          <div className="overflow-hidden rounded-2xl" style={{ flex: 2 }}>
+            <VideoTile
+              stream={featuredStream}
+              username={featuredUsername}
+              isMuted={hostMutedIds.has(featuredId)}
+              isVideoOff={false}
+              isLocal={false}
+              isMutedByHost={hostMutedIds.has(featuredId)}
+              isActive={activeSpeaker === featuredId}
+              className="w-full h-full rounded-none"
+            />
+          </div>
+          {/* Two stacked tiles on the right */}
+          <div className="flex flex-col" style={{ flex: 1, gap: 4 }}>
+            {otherTiles.map(t => (
+              <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
+                <VideoTile
+                  stream={t.stream}
+                  username={t.username}
+                  isMuted={t.isLocal ? isMuted : hostMutedIds.has(t.id)}
+                  isVideoOff={t.isLocal ? isVideoOff : false}
+                  isLocal={t.isLocal}
+                  isMutedByHost={!t.isLocal && hostMutedIds.has(t.id)}
+                  isActive={activeSpeaker === t.id}
+                  className="w-full h-full rounded-none"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Mobile portrait: 2 equal top, 1 full-width bottom
     return (
-      <div className="w-full h-full bg-black flex flex-col" style={{ gap: 4, padding: 4 }}>
-        {/* Top row: 2 equal tiles */}
+      <div ref={containerRef} className="w-full h-full bg-black flex flex-col" style={{ gap: 4, padding: 4 }}>
         <div className="flex flex-1" style={{ gap: 4 }}>
-          {topTiles.map(t => (
+          {otherTiles.map(t => (
             <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
               <VideoTile
                 stream={t.stream}
@@ -206,17 +293,15 @@ const CallLayout = memo(({
             </div>
           ))}
         </div>
-
-        {/* Bottom row: 1 full-width tile */}
         <div className="flex-1 overflow-hidden rounded-2xl">
           <VideoTile
-            stream={bottomStream}
-            username={bottomUsername}
-            isMuted={hostMutedIds.has(bottomId)}
+            stream={featuredStream}
+            username={featuredUsername}
+            isMuted={hostMutedIds.has(featuredId)}
             isVideoOff={false}
             isLocal={false}
-            isMutedByHost={hostMutedIds.has(bottomId)}
-            isActive={activeSpeaker === bottomId}
+            isMutedByHost={hostMutedIds.has(featuredId)}
+            isActive={activeSpeaker === featuredId}
             className="w-full h-full rounded-none"
           />
         </div>
@@ -224,12 +309,18 @@ const CallLayout = memo(({
     );
   }
 
-  // ── 4+ person: equal 2×2 grid (or auto grid for more) ────────────────
-  const cols = totalCount <= 4 ? 2 : Math.ceil(Math.sqrt(camTiles.length));
+  // ── 4+ person: equal grid — 2×2 for 4, auto for more ─────────────────
+  // Landscape gets 3 cols for 5-6 people, portrait keeps 2 cols
+  const cols = (() => {
+    if (camTiles.length <= 4) return 2;
+    if (isLandscape)          return 3;
+    return 2;
+  })();
   const rows = Math.ceil(camTiles.length / cols);
 
   return (
     <div
+      ref={containerRef}
       className="w-full h-full bg-black"
       style={{
         display:             'grid',
