@@ -7,16 +7,11 @@ import { readSoundSettings } from '../../hooks/useSoundSettings';
 const CIRCUMFERENCE = 2 * Math.PI * 46;
 
 const OutgoingCall = ({ receiver, onCancel, countdown = 30 }) => {
-
   useEffect(() => {
-  const s = readSoundSettings();
-  SoundEngine.playVideoCallTone(
-    s.videoCall.ringtone,
-    s.videoCall.volume,
-    s.videoCall.vibration   // ← looping vibration until stopped
-  );
-  return () => SoundEngine.stopVideoCallTone(); // stops audio + vibration together
-}, []);
+    const s = readSoundSettings();
+    SoundEngine.playVideoCallTone(s.videoCall.ringtone, s.videoCall.volume);
+    return () => SoundEngine.stopVideoCallTone();
+  }, []);
 
   if (!receiver) return null;
 
@@ -32,7 +27,8 @@ const OutgoingCall = ({ receiver, onCancel, countdown = 30 }) => {
         <div className="text-center mb-6">
 
           {/* Avatar with SVG countdown ring */}
-          <div className="relative inline-flex items-center justify-center mb-4">
+          <div className="relative mb-4 mx-auto" style={{ width: 112, height: 112 }}>
+            {/* SVG ring */}
             <svg
               width="112" height="112"
               viewBox="0 0 112 112"
@@ -59,18 +55,28 @@ const OutgoingCall = ({ receiver, onCancel, countdown = 30 }) => {
               />
             </svg>
 
-            {/* Avatar image */}
+            {/* Avatar image — centred */}
             <img
               src={receiver.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${receiver.username}`}
               alt={receiver.username}
-              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover relative z-10"
+              className="rounded-full object-cover absolute"
+              style={{
+                width: 80, height: 80,
+                top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10,
+              }}
               onError={e => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${receiver.username}`; }}
             />
 
-            {/* Countdown badge */}
+            {/* Countdown badge — top-right corner of the 112px box */}
             <div
-              className="absolute -top-1 -right-1 z-20 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg"
-              style={{ background: ringColor, transition: 'background 0.3s ease' }}
+              className="absolute z-20 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg"
+              style={{
+                top: 2, right: 2,
+                background: ringColor,
+                transition: 'background 0.3s ease',
+              }}
             >
               {countdown}
             </div>

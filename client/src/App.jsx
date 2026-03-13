@@ -1,4 +1,3 @@
-// REMOVE these duplicate/scattered imports at the top and replace with this clean block:
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Toaster } from 'react-hot-toast';
@@ -34,19 +33,21 @@ import ReportsModeration   from './components/Admin/ReportsModeration';
 import AnalyticsDashboard  from './components/Admin/AnalyticsDashboard';
 import SystemHealth        from './components/Admin/SystemHealth';
 import AdminLogs           from './components/Admin/AdminLogs';
-import AdminSupportInbox from './components/Admin/AdminSupportInbox';
+import AdminSupportInbox   from './components/Admin/AdminSupportInbox';
+
 // ─── Admin Guard ─────────────────────────────────────────────────────────────
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (!user)                                       return <Navigate to="/login" replace />;
+  if (!user)                                        return <Navigate to="/login"     replace />;
   if (!['admin', 'superadmin'].includes(user.role)) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
+// ─── Global Broadcast ────────────────────────────────────────────────────────
 function GlobalBroadcast() {
   const { socket } = useSocket();
-  const [popup, setPopup] = useState(null);
+  const [popup,   setPopup]   = useState(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -66,57 +67,57 @@ function GlobalBroadcast() {
   if (!popup) return null;
 
   const styles = {
-    danger:  {
+    danger: {
       overlay: 'from-red-950/80 to-black/80',
-      card: 'bg-gradient-to-br from-red-900 to-red-950',
-      border: 'border-red-400/30',
-      glow: 'shadow-red-500/20',
-      bar: 'from-red-400 to-red-600',
-      badge: 'bg-red-500/30 text-red-300 border-red-400/30',
-      btn: 'from-red-500 to-red-700 hover:from-red-400 hover:to-red-600',
-      text: 'text-red-100',
-      sub: 'text-red-300/70',
-      icon: '🚨',
-      label: 'URGENT ALERT',
+      card:    'bg-gradient-to-br from-red-900 to-red-950',
+      border:  'border-red-400/30',
+      glow:    'shadow-red-500/20',
+      bar:     'from-red-400 to-red-600',
+      badge:   'bg-red-500/30 text-red-300 border-red-400/30',
+      btn:     'from-red-500 to-red-700 hover:from-red-400 hover:to-red-600',
+      text:    'text-red-100',
+      sub:     'text-red-300/70',
+      icon:    '🚨',
+      label:   'URGENT ALERT',
     },
     warning: {
       overlay: 'from-yellow-950/80 to-black/80',
-      card: 'bg-gradient-to-br from-yellow-900 to-amber-950',
-      border: 'border-yellow-400/30',
-      glow: 'shadow-yellow-500/20',
-      bar: 'from-yellow-400 to-amber-600',
-      badge: 'bg-yellow-500/30 text-yellow-300 border-yellow-400/30',
-      btn: 'from-yellow-500 to-amber-700 hover:from-yellow-400 hover:to-amber-600',
-      text: 'text-yellow-100',
-      sub: 'text-yellow-300/70',
-      icon: '⚠️',
-      label: 'WARNING',
+      card:    'bg-gradient-to-br from-yellow-900 to-amber-950',
+      border:  'border-yellow-400/30',
+      glow:    'shadow-yellow-500/20',
+      bar:     'from-yellow-400 to-amber-600',
+      badge:   'bg-yellow-500/30 text-yellow-300 border-yellow-400/30',
+      btn:     'from-yellow-500 to-amber-700 hover:from-yellow-400 hover:to-amber-600',
+      text:    'text-yellow-100',
+      sub:     'text-yellow-300/70',
+      icon:    '⚠️',
+      label:   'WARNING',
     },
     success: {
       overlay: 'from-emerald-950/80 to-black/80',
-      card: 'bg-gradient-to-br from-emerald-900 to-emerald-950',
-      border: 'border-emerald-400/30',
-      glow: 'shadow-emerald-500/20',
-      bar: 'from-emerald-400 to-emerald-600',
-      badge: 'bg-emerald-500/30 text-emerald-300 border-emerald-400/30',
-      btn: 'from-emerald-500 to-emerald-700 hover:from-emerald-400 hover:to-emerald-600',
-      text: 'text-emerald-100',
-      sub: 'text-emerald-300/70',
-      icon: '✅',
-      label: 'ANNOUNCEMENT',
+      card:    'bg-gradient-to-br from-emerald-900 to-emerald-950',
+      border:  'border-emerald-400/30',
+      glow:    'shadow-emerald-500/20',
+      bar:     'from-emerald-400 to-emerald-600',
+      badge:   'bg-emerald-500/30 text-emerald-300 border-emerald-400/30',
+      btn:     'from-emerald-500 to-emerald-700 hover:from-emerald-400 hover:to-emerald-600',
+      text:    'text-emerald-100',
+      sub:     'text-emerald-300/70',
+      icon:    '✅',
+      label:   'ANNOUNCEMENT',
     },
     info: {
       overlay: 'from-violet-950/80 to-black/80',
-      card: 'bg-gradient-to-br from-violet-900 to-indigo-950',
-      border: 'border-violet-400/30',
-      glow: 'shadow-violet-500/20',
-      bar: 'from-violet-400 to-indigo-600',
-      badge: 'bg-violet-500/30 text-violet-300 border-violet-400/30',
-      btn: 'from-violet-500 to-indigo-700 hover:from-violet-400 hover:to-indigo-600',
-      text: 'text-violet-100',
-      sub: 'text-violet-300/70',
-      icon: '📢',
-      label: 'SYSTEM NOTICE',
+      card:    'bg-gradient-to-br from-violet-900 to-indigo-950',
+      border:  'border-violet-400/30',
+      glow:    'shadow-violet-500/20',
+      bar:     'from-violet-400 to-indigo-600',
+      badge:   'bg-violet-500/30 text-violet-300 border-violet-400/30',
+      btn:     'from-violet-500 to-indigo-700 hover:from-violet-400 hover:to-indigo-600',
+      text:    'text-violet-100',
+      sub:     'text-violet-300/70',
+      icon:    '📢',
+      label:   'SYSTEM NOTICE',
     },
   };
 
@@ -133,21 +134,14 @@ function GlobalBroadcast() {
           shadow-2xl ${s.glow} overflow-hidden
           transition-all duration-300 ${visible ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
       >
-        {/* Gradient top bar */}
         <div className={`h-1.5 w-full bg-gradient-to-r ${s.bar}`} />
-
-        {/* Noise texture overlay */}
         <div className="relative p-6">
-
-          {/* Close button */}
           <button
             onClick={handleDismiss}
             className="absolute top-4 right-4 w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/50 hover:text-white transition-all"
           >
             ✕
           </button>
-
-          {/* Icon + badge */}
           <div className="flex items-center gap-3 mb-4">
             <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-3xl shadow-inner flex-shrink-0">
               {s.icon}
@@ -163,16 +157,8 @@ function GlobalBroadcast() {
               )}
             </div>
           </div>
-
-          {/* Divider */}
           <div className="h-px bg-white/10 mb-4" />
-
-          {/* Message */}
-          <p className={`text-sm ${s.text} leading-relaxed mb-5`}>
-            {popup.message}
-          </p>
-
-          {/* Footer */}
+          <p className={`text-sm ${s.text} leading-relaxed mb-5`}>{popup.message}</p>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold text-white">
@@ -183,7 +169,6 @@ function GlobalBroadcast() {
                 <p className="text-xs font-semibold text-white/70">{popup.sentBy}</p>
               </div>
             </div>
-
             <button
               onClick={handleDismiss}
               className={`px-5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r ${s.btn} shadow-lg transition-all active:scale-95`}
@@ -191,37 +176,27 @@ function GlobalBroadcast() {
               Got it
             </button>
           </div>
-
-          {/* Timestamp */}
           <p className={`text-[10px] ${s.sub} mt-3 text-center`}>
             {popup.sentAt ? new Date(popup.sentAt).toLocaleString() : new Date().toLocaleString()}
           </p>
-
         </div>
       </div>
     </div>
   );
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PASTE THESE TWO FUNCTIONS into App.jsx, replacing the existing
-// GlobalIncomingCall and GlobalOutgoingCall functions.
-// Everything else in App.jsx stays exactly the same.
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─── Global Incoming Call ─────────────────────────────────────────────────────
 function GlobalIncomingCall() {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
   const navigate         = useNavigate();
 
   const [incomingCall, setIncomingCall] = useState(null);
-  const [countdown,    setCountdown]    = useState(30);    // ← NEW
+  const [countdown,    setCountdown]    = useState(30);
 
-  const timerRef     = useRef(null);   // auto-reject timeout
-  const intervalRef  = useRef(null);   // countdown tick
+  const timerRef    = useRef(null);   // auto-dismiss timeout
+  const intervalRef = useRef(null);   // countdown tick
 
-  // Clear both timers at once
   const clearTimers = useCallback(() => {
     clearTimeout(timerRef.current);
     clearInterval(intervalRef.current);
@@ -243,7 +218,7 @@ function GlobalIncomingCall() {
         });
       }, 1000);
 
-      // Auto-dismiss (no emit needed — caller's own 30s timer cancels)
+      // Auto-dismiss after 30 s (caller's timer also fires, no emit needed)
       timerRef.current = setTimeout(() => {
         clearInterval(intervalRef.current);
         setIncomingCall(null);
@@ -290,28 +265,26 @@ function GlobalIncomingCall() {
       caller={incomingCall}
       onAccept={handleAccept}
       onReject={handleReject}
-      countdown={countdown}        // ← NEW prop
+      countdown={countdown}
     />
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─── Global Outgoing Call ─────────────────────────────────────────────────────
 function GlobalOutgoingCall() {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
   const navigate         = useNavigate();
 
   const [outgoingCall, setOutgoingCall] = useState(null);
-  const [countdown,    setCountdown]    = useState(30);    // ← NEW
+  const [countdown,    setCountdown]    = useState(30);
 
   const timerRef        = useRef(null);
-  const intervalRef     = useRef(null);  // ← NEW
+  const intervalRef     = useRef(null);
   const outgoingCallRef = useRef(null);
 
   useEffect(() => { outgoingCallRef.current = outgoingCall; }, [outgoingCall]);
 
-  // Clear both timers at once
   const clearTimers = useCallback(() => {
     clearTimeout(timerRef.current);
     clearInterval(intervalRef.current);
@@ -367,7 +340,7 @@ function GlobalOutgoingCall() {
       clearTimers();
       setOutgoingCall(data);
       outgoingCallRef.current = data;
-      setCountdown(30);                        // ← NEW: reset
+      setCountdown(30);
 
       // Tick down every second
       intervalRef.current = setInterval(() => {
@@ -402,100 +375,12 @@ function GlobalOutgoingCall() {
     <OutgoingCall
       receiver={{ username: outgoingCall.receiverName, avatar: outgoingCall.receiverAvatar }}
       onCancel={() => handleCancel()}
-      countdown={countdown}        // ← NEW prop
+      countdown={countdown}
     />
   );
 }
 
-
-function GlobalOutgoingCall() {
-  const { socket, emit } = useSocket();
-  const { user }         = useAuth();
-  const navigate         = useNavigate();
-  const [outgoingCall, setOutgoingCall] = useState(null);
-  const timerRef        = useRef(null);
-  const outgoingCallRef = useRef(null);
-
-  useEffect(() => { outgoingCallRef.current = outgoingCall; }, [outgoingCall]);
-
-  const handleCancel = useCallback((callOverride) => {
-    const call = callOverride || outgoingCallRef.current;
-    if (!call) return;
-    clearTimeout(timerRef.current);
-    emit('cancel-call', { receiverId: call.receiverId, callerId: user?._id });
-    setOutgoingCall(null);
-    outgoingCallRef.current = null;
-    sessionStorage.removeItem('vmeet_calling');
-    window.dispatchEvent(new CustomEvent('outgoing-call-cancelled'));
-  }, [emit, user?._id]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('call-accepted', ({ roomId }) => {
-      clearTimeout(timerRef.current);
-      setOutgoingCall(null);
-      outgoingCallRef.current = null;
-      sessionStorage.removeItem('vmeet_calling');
-      navigate(`/room/${roomId}`);
-    });
-
-    socket.on('call-rejected', () => {
-      clearTimeout(timerRef.current);
-      setOutgoingCall(null);
-      outgoingCallRef.current = null;
-      sessionStorage.removeItem('vmeet_calling');
-      toast.error('Call was declined', { icon: '📵' });
-    });
-
-    socket.on('call-failed', ({ message }) => {
-      clearTimeout(timerRef.current);
-      setOutgoingCall(null);
-      outgoingCallRef.current = null;
-      sessionStorage.removeItem('vmeet_calling');
-      toast.error(message);
-    });
-
-    socket.on('call-cancelled', () => {
-      clearTimeout(timerRef.current);
-      setOutgoingCall(null);
-      outgoingCallRef.current = null;
-      sessionStorage.removeItem('vmeet_calling');
-    });
-
-    const onStart = (e) => {
-      const data = e.detail;
-      setOutgoingCall(data);
-      outgoingCallRef.current = data;
-      clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        toast('No answer', { icon: '⏱️', duration: 3000 });
-        handleCancel(data);
-      }, 30000);
-    };
-
-    window.addEventListener('outgoing-call-started', onStart);
-
-    return () => {
-      socket.off('call-accepted');
-      socket.off('call-rejected');
-      socket.off('call-failed');
-      socket.off('call-cancelled');
-      window.removeEventListener('outgoing-call-started', onStart);
-    };
-  }, [socket, navigate, handleCancel]);
-
-  if (!outgoingCall) return null;
-
-  return (
-    <OutgoingCall
-      receiver={{ username: outgoingCall.receiverName, avatar: outgoingCall.receiverAvatar }}
-      onCancel={() => handleCancel()}
-    />
-  );
-}
-
-
+// ─── Global Video Invite ──────────────────────────────────────────────────────
 function GlobalVideoInvite() {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
@@ -509,7 +394,6 @@ function GlobalVideoInvite() {
       let countdown = 30;
       const toastId = `invite-${roomId}`;
 
-      // Clear any existing invite for this room
       if (activeInvites.current.has(roomId)) {
         clearInterval(activeInvites.current.get(roomId));
         activeInvites.current.delete(roomId);
@@ -517,16 +401,16 @@ function GlobalVideoInvite() {
 
       const renderToast = (t, seconds) => (
         <div style={{
-          background: 'linear-gradient(135deg, #0f1923 0%, #0d1520 100%)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '20px',
-          padding: '0',
-          width: '300px',
-          overflow: 'hidden',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
-          opacity: t.visible ? 1 : 0,
-          transform: t.visible ? 'translateY(0) scale(1)' : 'translateY(-12px) scale(0.95)',
-          transition: 'all 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+          background:    'linear-gradient(135deg, #0f1923 0%, #0d1520 100%)',
+          border:        '1px solid rgba(255,255,255,0.08)',
+          borderRadius:  '20px',
+          padding:       '0',
+          width:         '300px',
+          overflow:      'hidden',
+          boxShadow:     '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
+          opacity:       t.visible ? 1 : 0,
+          transform:     t.visible ? 'translateY(0) scale(1)' : 'translateY(-12px) scale(0.95)',
+          transition:    'all 0.3s cubic-bezier(0.34,1.56,0.64,1)',
         }}>
           <div style={{ height: '3px', background: 'linear-gradient(90deg, #22c55e, #16a34a, #10b981)', borderRadius: '20px 20px 0 0' }} />
           <div style={{ padding: '16px' }}>
@@ -618,12 +502,10 @@ function GlobalVideoInvite() {
         });
       }, 1000);
 
-      // ← Store interval so invite-cancelled can clear it
       activeInvites.current.set(roomId, intervalId);
     });
 
     socket.on('invite-cancelled', ({ roomId: cancelledRoomId }) => {
-      // ← Kill the interval first, THEN dismiss the toast
       if (activeInvites.current.has(cancelledRoomId)) {
         clearInterval(activeInvites.current.get(cancelledRoomId));
         activeInvites.current.delete(cancelledRoomId);
@@ -643,7 +525,6 @@ function GlobalVideoInvite() {
     });
 
     return () => {
-      // Clean up all active intervals on unmount
       activeInvites.current.forEach(id => clearInterval(id));
       activeInvites.current.clear();
       socket.off('incoming-video-invite');
@@ -657,85 +538,85 @@ function GlobalVideoInvite() {
   return null;
 }
 
-
-
+// ─── Join Redirect ────────────────────────────────────────────────────────────
 const JoinRedirect = () => {
   const { meetingCode } = useParams();
   return <Navigate to={`/room/${meetingCode}`} replace />;
 };
 
+// ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   return (
     <AuthProvider>
       <SocketProvider>
         <WebRTCProvider>
           <AudioCallProvider>
-              <MinimizedCallProvider>
-            <Router>
-              <Routes>
-                {/* ─── Public ───────────────────────────────────────────── */}
-                <Route path="/login"    element={<Login />} />
-                <Route path="/register" element={<Register />} />
+            <MinimizedCallProvider>
+              <Router>
+                <Routes>
+                  {/* ─── Public ─────────────────────────────────────────── */}
+                  <Route path="/login"    element={<Login />} />
+                  <Route path="/register" element={<Register />} />
 
-                {/* ─── App ──────────────────────────────────────────────── */}
-                <Route path="/dashboard/*" element={
-                  <ProtectedRoute><Dashboard /></ProtectedRoute>
-                } />
-                <Route path="/join/:meetingCode" element={
-                  <ProtectedRoute><JoinRedirect /></ProtectedRoute>
-                } />
-                <Route path="/room/:roomId" element={
-                  <ProtectedRoute><VideoRoom /></ProtectedRoute>
-                } />
-                <Route path="/user/:id" element={
-                  <ProtectedRoute><UserProfilePage /></ProtectedRoute>
-                } />
+                  {/* ─── App ────────────────────────────────────────────── */}
+                  <Route path="/dashboard/*" element={
+                    <ProtectedRoute><Dashboard /></ProtectedRoute>
+                  } />
+                  <Route path="/join/:meetingCode" element={
+                    <ProtectedRoute><JoinRedirect /></ProtectedRoute>
+                  } />
+                  <Route path="/room/:roomId" element={
+                    <ProtectedRoute><VideoRoom /></ProtectedRoute>
+                  } />
+                  <Route path="/user/:id" element={
+                    <ProtectedRoute><UserProfilePage /></ProtectedRoute>
+                  } />
 
-                {/* ─── Admin Panel ──────────────────────────────────────── */}
-                <Route path="/super-admin-dashboard" element={
-                  <AdminRoute><AdminLayout /></AdminRoute>
-                }>
-                  <Route index                element={<AdminDashboard />} />
-                  <Route path="users"         element={<UsersManagement />} />
-                  <Route path="messages"      element={<ChatMonitoring />} />
-                  <Route path="calls"         element={<CallsMonitoring />} />
-                  <Route path="rooms"         element={<RoomsManagement />} />
-                  <Route path="reports"       element={<ReportsModeration />} />
-                  <Route path="analytics"     element={<AnalyticsDashboard />} />
-                  <Route path="health"        element={<SystemHealth />} />
-                  <Route path="logs"          element={<AdminLogs />} />
-                   <Route path="support"       element={<AdminSupportInbox />} /> 
-                </Route>
+                  {/* ─── Admin Panel ────────────────────────────────────── */}
+                  <Route path="/super-admin-dashboard" element={
+                    <AdminRoute><AdminLayout /></AdminRoute>
+                  }>
+                    <Route index              element={<AdminDashboard />} />
+                    <Route path="users"       element={<UsersManagement />} />
+                    <Route path="messages"    element={<ChatMonitoring />} />
+                    <Route path="calls"       element={<CallsMonitoring />} />
+                    <Route path="rooms"       element={<RoomsManagement />} />
+                    <Route path="reports"     element={<ReportsModeration />} />
+                    <Route path="analytics"   element={<AnalyticsDashboard />} />
+                    <Route path="health"      element={<SystemHealth />} />
+                    <Route path="logs"        element={<AdminLogs />} />
+                    <Route path="support"     element={<AdminSupportInbox />} />
+                  </Route>
 
-                {/* ─── Fallback ─────────────────────────────────────────── */}
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
+                  {/* ─── Fallback ────────────────────────────────────────── */}
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
 
-              <GlobalIncomingCall />
-              <GlobalOutgoingCall />
-              <GlobalBroadcast />
-              <GlobalVideoInvite />
-              <IncomingAudioCall />
-              <AudioCallUI />
-               <FloatingCallWindow />
-              <Toaster
-                position="top-right"
-                toastOptions={{
-                  duration: 3000,
-                  style: {
-                    background:   '#1e293b',
-                    color:        '#fff',
-                    borderRadius: '0.75rem',
-                    padding:      '1rem',
-                    fontSize:     '0.875rem',
-                    fontWeight:   '500',
-                  },
-                  success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
-                  error:   { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
-                }}
-              />
-            </Router>
+                <GlobalIncomingCall />
+                <GlobalOutgoingCall />
+                <GlobalBroadcast />
+                <GlobalVideoInvite />
+                <IncomingAudioCall />
+                <AudioCallUI />
+                <FloatingCallWindow />
+                <Toaster
+                  position="top-right"
+                  toastOptions={{
+                    duration: 3000,
+                    style: {
+                      background:   '#1e293b',
+                      color:        '#fff',
+                      borderRadius: '0.75rem',
+                      padding:      '1rem',
+                      fontSize:     '0.875rem',
+                      fontWeight:   '500',
+                    },
+                    success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
+                    error:   { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
+                  }}
+                />
+              </Router>
             </MinimizedCallProvider>
           </AudioCallProvider>
         </WebRTCProvider>

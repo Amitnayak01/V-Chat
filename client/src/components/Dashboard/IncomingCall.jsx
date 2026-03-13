@@ -7,19 +7,13 @@ import { readSoundSettings } from '../../hooks/useSoundSettings';
 const CIRCUMFERENCE = 2 * Math.PI * 46;
 
 const IncomingCall = ({ caller, onAccept, onReject, countdown = 30 }) => {
-
-
-
-
   useEffect(() => {
-  const s = readSoundSettings();
-  SoundEngine.playVideoCallTone(
-    s.videoCall.ringtone,
-    s.videoCall.volume,
-    s.videoCall.vibration   // ← pass vibration flag — now loops until stopped
-  );
-  return () => SoundEngine.stopVideoCallTone(); // ← stops BOTH audio + vibration
-}, []);
+    const s = readSoundSettings();
+    SoundEngine.playVideoCallTone(s.videoCall.ringtone, s.videoCall.volume);
+    if (s.videoCall.vibration) SoundEngine.vibrate([300, 150, 300]);
+    return () => SoundEngine.stopVideoCallTone();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!caller) return null;
 
   const progress   = countdown / 30;                          // 1 → 0
@@ -34,7 +28,8 @@ const IncomingCall = ({ caller, onAccept, onReject, countdown = 30 }) => {
         <div className="text-center mb-6">
 
           {/* Avatar with SVG countdown ring */}
-          <div className="relative inline-flex items-center justify-center mb-4">
+          <div className="relative mb-4 mx-auto" style={{ width: 112, height: 112 }}>
+            {/* SVG ring — fills the 112×112 box */}
             <svg
               width="112" height="112"
               viewBox="0 0 112 112"
@@ -61,17 +56,27 @@ const IncomingCall = ({ caller, onAccept, onReject, countdown = 30 }) => {
               />
             </svg>
 
-            {/* Avatar image */}
+            {/* Avatar image — centred inside the 112×112 box */}
             <img
               src={caller.callerAvatar}
               alt={caller.callerName}
-              className="w-20 h-20 sm:w-24 sm:h-24 avatar relative z-10"
+              className="avatar absolute"
+              style={{
+                width: 80, height: 80,
+                top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10,
+              }}
             />
 
-            {/* Countdown badge — top-right of avatar */}
+            {/* Countdown badge — anchored to top-right corner of the 112px box */}
             <div
-              className="absolute -top-1 -right-1 z-20 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg"
-              style={{ background: ringColor, transition: 'background 0.3s ease' }}
+              className="absolute z-20 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg"
+              style={{
+                top: 2, right: 2,
+                background: ringColor,
+                transition: 'background 0.3s ease',
+              }}
             >
               {countdown}
             </div>
