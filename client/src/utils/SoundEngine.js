@@ -15,13 +15,7 @@
 
 // ─── Tone definitions ─────────────────────────────────────────────────────────
 
-/**
- * Each ringtone is a function that receives an AudioContext and volume,
- * and returns a { stop() } handle.
- */
 const RINGTONE_PATTERNS = {
-
-  // 1. Classic — two-tone telephone ring
   classic: (ctx, vol) => {
     const beep = (freq, t0, dur) => {
       const osc = ctx.createOscillator();
@@ -44,15 +38,13 @@ const RINGTONE_PATTERNS = {
     return { stop: () => clearInterval(id) };
   },
 
-  // 2. Marimba — warm wooden chime (like iOS)
   marimba: (ctx, vol) => {
-    const notes = [783.99, 659.25, 523.25, 659.25]; // G5 E5 C5 E5
+    const notes = [783.99, 659.25, 523.25, 659.25];
     const play = () => {
       notes.forEach((freq, i) => {
         const t   = ctx.currentTime + i * 0.12;
         const osc = ctx.createOscillator();
         const g   = ctx.createGain();
-        // Add slight harmonic for marimba warmth
         const osc2 = ctx.createOscillator();
         osc.connect(g); osc2.connect(g); g.connect(ctx.destination);
         osc.type = 'triangle'; osc.frequency.value = freq;
@@ -68,7 +60,6 @@ const RINGTONE_PATTERNS = {
     return { stop: () => clearInterval(id) };
   },
 
-  // 3. Digital — rising electronic pulse
   digital: (ctx, vol) => {
     const play = () => {
       const freqs = [880, 1100, 1320, 1760];
@@ -89,9 +80,7 @@ const RINGTONE_PATTERNS = {
     return { stop: () => clearInterval(id) };
   },
 
-  // 4. Nokia — legendary 8-note melody (Gran Vals excerpt)
   nokia: (ctx, vol) => {
-    // E5 D5 F#4 G#4 C#5 B4 D4 E4
     const seq = [
       { f: 659.25, d: 0.18 }, { f: 587.33, d: 0.18 },
       { f: 369.99, d: 0.36 }, { f: 415.30, d: 0.36 },
@@ -116,13 +105,12 @@ const RINGTONE_PATTERNS = {
     return { stop: () => clearInterval(id) };
   },
 
-  // 5. Chime — soft ethereal bell cluster
   chime: (ctx, vol) => {
     const bells = [
-      { freq: 523.25, delay: 0.00, dur: 1.2 },  // C5
-      { freq: 659.25, delay: 0.22, dur: 1.0 },  // E5
-      { freq: 783.99, delay: 0.44, dur: 0.9 },  // G5
-      { freq: 1046.5, delay: 0.66, dur: 1.4 },  // C6
+      { freq: 523.25, delay: 0.00, dur: 1.2 },
+      { freq: 659.25, delay: 0.22, dur: 1.0 },
+      { freq: 783.99, delay: 0.44, dur: 0.9 },
+      { freq: 1046.5, delay: 0.66, dur: 1.4 },
     ];
     const play = () => {
       bells.forEach(({ freq, delay, dur }) => {
@@ -142,7 +130,6 @@ const RINGTONE_PATTERNS = {
     return { stop: () => clearInterval(id) };
   },
 
-  // 6. Pulse — modern minimal triple-blip
   pulse: (ctx, vol) => {
     const play = () => {
       [0, 0.22, 0.44].forEach(delay => {
@@ -165,12 +152,11 @@ const RINGTONE_PATTERNS = {
 // ─── Notification / message tones ─────────────────────────────────────────────
 
 const MESSAGE_TONES = {
-
   ding: (ctx, vol) => {
     const osc = ctx.createOscillator();
     const g   = ctx.createGain();
     osc.connect(g); g.connect(ctx.destination);
-    osc.type = 'sine'; osc.frequency.value = 1318.5; // E6
+    osc.type = 'sine'; osc.frequency.value = 1318.5;
     g.gain.setValueAtTime(vol * 0.35, ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
     osc.start(); osc.stop(ctx.currentTime + 0.65);
@@ -205,34 +191,29 @@ const MESSAGE_TONES = {
     osc.start(); osc.stop(ctx.currentTime + 0.4);
   },
 
-  // silent
   silent: () => {},
 };
 
-
 // ─── Custom ringtone storage ──────────────────────────────────────────────────
-// Custom ringtones stored as base64 data-URLs in localStorage.
+
 const CUSTOM_KEY = {
   ring:    'vmeet_custom_ring_audio',
   video:   'vmeet_custom_ring_video',
   message: 'vmeet_custom_ring_message',
 };
 
-/** Get stored custom ringtone data-URL for a type, or null. */
 export const getCustomRingtone = (type = 'ring') => {
   try { return localStorage.getItem(CUSTOM_KEY[type] ?? CUSTOM_KEY.ring) || null; } catch { return null; }
 };
 
-/** Store (or clear) a custom ringtone data-URL. */
 export const setCustomRingtone = (type = 'ring', dataUrl) => {
   try {
     const key = CUSTOM_KEY[type] ?? CUSTOM_KEY.ring;
     if (dataUrl) localStorage.setItem(key, dataUrl);
     else         localStorage.removeItem(key);
-  } catch { /* localStorage quota — silently skip */ }
+  } catch {}
 };
 
-/** Convert a File from <input type="file"> to a data-URL. */
 export const fileToDataUrl = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload  = () => resolve(reader.result);
@@ -240,7 +221,6 @@ export const fileToDataUrl = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
-// HTMLAudioElement helpers for custom file playback
 const makeAudioLoop = (src, vol) => {
   const el = new Audio(src);
   el.loop   = true;
@@ -259,9 +239,10 @@ const playAudioOnce = (src, vol) => {
 
 class SoundEngineClass {
   constructor() {
-    this._ctx            = null;
-    this._ringtoneHandle = null;
-    this._videoHandle    = null;
+    this._ctx             = null;
+    this._ringtoneHandle  = null;
+    this._videoHandle     = null;
+    this._vibrationTimer  = null;   // ← NEW: tracks the looping vibration interval
   }
 
   _getCtx() {
@@ -273,52 +254,108 @@ class SoundEngineClass {
     return this._ctx;
   }
 
-  /** Play audio call ringtone — custom file takes priority over synth */
-  playRingtone(id = 'classic', vol = 0.8) {
-    this.stopRingtone();
-    const custom = getCustomRingtone('ring');
-    if (custom) { this._ringtoneHandle = makeAudioLoop(custom, vol); return; }
-    try {
-      const ctx = this._getCtx();
-      const fn  = RINGTONE_PATTERNS[id] ?? RINGTONE_PATTERNS.classic;
-      this._ringtoneHandle = fn(ctx, Math.max(0, Math.min(1, vol)));
-    } catch (_) {}
+  // ─── NEW: Looping vibration ──────────────────────────────────────────────
+
+  /**
+   * Starts vibrating on a repeating interval until stopVibration() is called.
+   * Each cycle: buzz → pause → buzz, then waits `intervalMs` before repeating.
+   *
+   * @param {number[]} pattern     - Vibration pattern in ms  [buzz, pause, buzz, ...]
+   * @param {number}   intervalMs  - Gap between each full pattern repeat (default 3000ms)
+   */
+  startVibration(pattern = [300, 150, 300], intervalMs = 3000) {
+    if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+
+    // Stop any existing vibration loop first
+    this.stopVibration();
+
+    // Fire immediately, then repeat on interval
+    navigator.vibrate(pattern);
+    this._vibrationTimer = setInterval(() => {
+      navigator.vibrate(pattern);
+    }, intervalMs);
   }
 
+  /**
+   * Stops the looping vibration and cancels any active hardware buzz.
+   */
+  stopVibration() {
+    if (this._vibrationTimer !== null) {
+      clearInterval(this._vibrationTimer);
+      this._vibrationTimer = null;
+    }
+    // Cancel any in-progress hardware vibration immediately
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(0);
+    }
+  }
+
+  // ─── Ringtone methods ────────────────────────────────────────────────────
+
+  /** Play audio call ringtone + start looping vibration if enabled */
+  playRingtone(id = 'classic', vol = 0.8, vibrate = true) {
+    this.stopRingtone();
+    const custom = getCustomRingtone('ring');
+    if (custom) { this._ringtoneHandle = makeAudioLoop(custom, vol); }
+    else {
+      try {
+        const ctx = this._getCtx();
+        const fn  = RINGTONE_PATTERNS[id] ?? RINGTONE_PATTERNS.classic;
+        this._ringtoneHandle = fn(ctx, Math.max(0, Math.min(1, vol)));
+      } catch (_) {}
+    }
+    // Start looping vibration synced to ring cycle
+    if (vibrate) this.startVibration([300, 150, 300], 3200);
+  }
+
+  /** Stop audio call ringtone AND vibration */
   stopRingtone() {
     try { this._ringtoneHandle?.stop(); } catch (_) {}
     this._ringtoneHandle = null;
+    this.stopVibration();   // ← always kill vibration when ring stops
   }
 
-  /** Play video call ringtone — custom file takes priority */
-  playVideoCallTone(id = 'chime', vol = 0.8) {
+  /** Play video call ringtone + start looping vibration if enabled */
+  playVideoCallTone(id = 'chime', vol = 0.8, vibrate = true) {
     this.stopVideoCallTone();
     const custom = getCustomRingtone('video');
-    if (custom) { this._videoHandle = makeAudioLoop(custom, vol); return; }
-    try {
-      const ctx = this._getCtx();
-      const fn  = RINGTONE_PATTERNS[id] ?? RINGTONE_PATTERNS.chime;
-      this._videoHandle = fn(ctx, vol);
-    } catch (_) {}
+    if (custom) { this._videoHandle = makeAudioLoop(custom, vol); }
+    else {
+      try {
+        const ctx = this._getCtx();
+        const fn  = RINGTONE_PATTERNS[id] ?? RINGTONE_PATTERNS.chime;
+        this._videoHandle = fn(ctx, vol);
+      } catch (_) {}
+    }
+    // Start looping vibration synced to video ring cycle
+    if (vibrate) this.startVibration([200, 100, 200, 100, 200], 3600);
   }
 
+  /** Stop video call ringtone AND vibration */
   stopVideoCallTone() {
     try { this._videoHandle?.stop(); } catch (_) {}
     this._videoHandle = null;
+    this.stopVibration();   // ← always kill vibration when ring stops
   }
 
-  /** One-shot message tone — custom file takes priority */
-  playMessageTone(id = 'ding', vol = 0.6) {
+  /** One-shot message tone — no looping vibration */
+  playMessageTone(id = 'ding', vol = 0.6, vibrate = false) {
     const custom = getCustomRingtone('message');
-    if (custom) { playAudioOnce(custom, vol); return; }
-    try {
-      const ctx = this._getCtx();
-      const fn  = MESSAGE_TONES[id] ?? MESSAGE_TONES.ding;
-      fn(ctx, Math.max(0, Math.min(1, vol)));
-    } catch (_) {}
+    if (custom) { playAudioOnce(custom, vol); }
+    else {
+      try {
+        const ctx = this._getCtx();
+        const fn  = MESSAGE_TONES[id] ?? MESSAGE_TONES.ding;
+        fn(ctx, Math.max(0, Math.min(1, vol)));
+      } catch (_) {}
+    }
+    // Single short buzz for messages (not looping)
+    if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate([100]);
+    }
   }
 
-  /** Preview ringtone for 3s then auto-stop. Custom file takes priority. */
+  /** Preview ringtone for 3s then auto-stop (vibration also stops after 3s) */
   previewRingtone(id, vol, type = 'ring') {
     if (type === 'message') {
       this.playMessageTone(id, vol);
@@ -351,7 +388,10 @@ class SoundEngineClass {
     }
   }
 
-  /** Vibrate (mobile only) */
+  /**
+   * @deprecated Use startVibration() / stopVibration() for looping,
+   *             or call navigator.vibrate() directly for one-shots.
+   */
   vibrate(pattern = [200, 100, 200]) {
     if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern);
   }

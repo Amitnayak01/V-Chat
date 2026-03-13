@@ -12,7 +12,8 @@ import { useAudioCall }  from '../../context/AudioCallContext';
 import { useSocket }     from '../../context/SocketContext';
 import { useAuth }       from '../../context/AuthContext';
 import { generateRoomId } from '../../utils/webrtc';
-
+import { SoundEngine }        from '../../utils/SoundEngine';
+import { readSoundSettings }  from '../../hooks/useSoundSettings';
 /* ─── helpers ────────────────────────────────────────────────────────────── */
 const fmt   = s  => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 const clamp = (v,lo,hi) => Math.min(Math.max(v,lo),hi);
@@ -545,6 +546,21 @@ const AudioCallUI = () => {
   }, 1000);
   return () => clearInterval(id);
 }, [callState]); // eslint-disable-line
+
+// ADD this new useEffect after the countdown useEffect
+useEffect(() => {
+  if (callState !== 'incoming') {
+    SoundEngine.stopRingtone();
+    return;
+  }
+  const s = readSoundSettings();
+  SoundEngine.playRingtone(
+    s.audioCall.ringtone,
+    s.audioCall.volume,
+    s.audioCall.vibration   // ← looping vibration until stopped
+  );
+  return () => SoundEngine.stopRingtone(); // stops audio + vibration together
+}, [callState]);
 
   /* ── Recording ───────────────────────────────────────────────────────── */
   const startRecording = useCallback(()=>{

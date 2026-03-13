@@ -83,28 +83,28 @@ const UserList = ({ onCallUser, searchQuery }) => {
     u.username?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
-  const getStatusColor = (user) => {
-    const live = onlineUsers.includes(user._id) ? 'online' : user.status;
-    switch (live) {
-      case 'online': return 'bg-emerald-400';
-      case 'away':   return 'bg-amber-400';
-      case 'busy':   return 'bg-red-500';
-      default:       return 'bg-slate-300';
-    }
-  };
+// ✅ REPLACE WITH
+const getStatusColor = (user) => {
+  const live = onlineUsers.includes(user._id?.toString()) ? 'online' : 'offline';
+  switch (live) {
+    case 'online': return 'bg-emerald-400';
+    default:       return 'bg-slate-300';
+  }
+};
 
-  const getStatusLabel = (user) => {
-    const live = onlineUsers.includes(user._id) ? 'online' : user.status;
-    if (live === 'online') return 'Online';
-    if (!user.lastSeen) return 'Offline';
-    const diff = Math.floor((Date.now() - new Date(user.lastSeen)) / 60000);
-    if (diff < 1)    return 'Just now';
-    if (diff < 60)   return `${diff}m ago`;
-    if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
-    return `${Math.floor(diff / 1440)}d ago`;
-  };
+const getStatusLabel = (user) => {
+  const live = onlineUsers.includes(user._id?.toString());
+  if (live) return 'Online';
+  if (!user.lastSeen) return 'Offline';
+  const diff = Math.floor((Date.now() - new Date(user.lastSeen)) / 60000);
+  if (diff < 1)    return 'Just now';
+  if (diff < 60)   return `${diff}m ago`;
+  if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
+  return `${Math.floor(diff / 1440)}d ago`;
+};
 
-  const isOnline = (user) => onlineUsers.includes(user._id) || user.status === 'online';
+const isOnline = (user) => onlineUsers.includes(user._id?.toString()); // ← removed stale DB fallback
+
 
   /* ══════════════════════════════════════════════════════════════════════
      LOADING STATE

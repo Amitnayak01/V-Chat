@@ -202,29 +202,71 @@ function GlobalBroadcast() {
     </div>
   );
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PASTE THESE TWO FUNCTIONS into App.jsx, replacing the existing
+// GlobalIncomingCall and GlobalOutgoingCall functions.
+// Everything else in App.jsx stays exactly the same.
+// ─────────────────────────────────────────────────────────────────────────────
+
 function GlobalIncomingCall() {
   const { socket, emit } = useSocket();
   const { user }         = useAuth();
   const navigate         = useNavigate();
+
   const [incomingCall, setIncomingCall] = useState(null);
+  const [countdown,    setCountdown]    = useState(30);    // ← NEW
+
+  const timerRef     = useRef(null);   // auto-reject timeout
+  const intervalRef  = useRef(null);   // countdown tick
+
+  // Clear both timers at once
+  const clearTimers = useCallback(() => {
+    clearTimeout(timerRef.current);
+    clearInterval(intervalRef.current);
+  }, []);
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('incoming-call', (data) => setIncomingCall(data));
+    socket.on('incoming-call', (data) => {
+      clearTimers();
+      setIncomingCall(data);
+      setCountdown(30);
+
+      // Tick down every second
+      intervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) { clearInterval(intervalRef.current); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Auto-dismiss (no emit needed — caller's own 30s timer cancels)
+      timerRef.current = setTimeout(() => {
+        clearInterval(intervalRef.current);
+        setIncomingCall(null);
+      }, 30000);
+    });
+
     socket.on('call-cancelled', ({ callerId }) => {
+      clearTimers();
       setIncomingCall(prev => prev?.callerId === callerId ? null : prev);
       toast('Caller cancelled the call', { icon: '📵', duration: 3000 });
     });
+
     return () => {
+      clearTimers();
       socket.off('incoming-call');
       socket.off('call-cancelled');
     };
-  }, [socket]);
+  }, [socket, clearTimers]);
 
   if (!incomingCall) return null;
 
   const handleAccept = () => {
+    clearTimers();
     emit('accept-call', {
       callerId: incomingCall.callerId,
       roomId:   incomingCall.roomId,
@@ -235,6 +277,7 @@ function GlobalIncomingCall() {
   };
 
   const handleReject = () => {
+    clearTimers();
     emit('reject-call', {
       callerId: incomingCall.callerId,
       userId:   user._id,
@@ -247,9 +290,123 @@ function GlobalIncomingCall() {
       caller={incomingCall}
       onAccept={handleAccept}
       onReject={handleReject}
+      countdown={countdown}        // ← NEW prop
     />
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+function GlobalOutgoingCall() {
+  const { socket, emit } = useSocket();
+  const { user }         = useAuth();
+  const navigate         = useNavigate();
+
+  const [outgoingCall, setOutgoingCall] = useState(null);
+  const [countdown,    setCountdown]    = useState(30);    // ← NEW
+
+  const timerRef        = useRef(null);
+  const intervalRef     = useRef(null);  // ← NEW
+  const outgoingCallRef = useRef(null);
+
+  useEffect(() => { outgoingCallRef.current = outgoingCall; }, [outgoingCall]);
+
+  // Clear both timers at once
+  const clearTimers = useCallback(() => {
+    clearTimeout(timerRef.current);
+    clearInterval(intervalRef.current);
+  }, []);
+
+  const handleCancel = useCallback((callOverride) => {
+    const call = callOverride || outgoingCallRef.current;
+    if (!call) return;
+    clearTimers();
+    emit('cancel-call', { receiverId: call.receiverId, callerId: user?._id });
+    setOutgoingCall(null);
+    outgoingCallRef.current = null;
+    sessionStorage.removeItem('vmeet_calling');
+    window.dispatchEvent(new CustomEvent('outgoing-call-cancelled'));
+  }, [emit, user?._id, clearTimers]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('call-accepted', ({ roomId }) => {
+      clearTimers();
+      setOutgoingCall(null);
+      outgoingCallRef.current = null;
+      sessionStorage.removeItem('vmeet_calling');
+      navigate(`/room/${roomId}`);
+    });
+
+    socket.on('call-rejected', () => {
+      clearTimers();
+      setOutgoingCall(null);
+      outgoingCallRef.current = null;
+      sessionStorage.removeItem('vmeet_calling');
+      toast.error('Call was declined', { icon: '📵' });
+    });
+
+    socket.on('call-failed', ({ message }) => {
+      clearTimers();
+      setOutgoingCall(null);
+      outgoingCallRef.current = null;
+      sessionStorage.removeItem('vmeet_calling');
+      toast.error(message);
+    });
+
+    socket.on('call-cancelled', () => {
+      clearTimers();
+      setOutgoingCall(null);
+      outgoingCallRef.current = null;
+      sessionStorage.removeItem('vmeet_calling');
+    });
+
+    const onStart = (e) => {
+      const data = e.detail;
+      clearTimers();
+      setOutgoingCall(data);
+      outgoingCallRef.current = data;
+      setCountdown(30);                        // ← NEW: reset
+
+      // Tick down every second
+      intervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) { clearInterval(intervalRef.current); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Auto-cancel after 30 s
+      timerRef.current = setTimeout(() => {
+        toast('No answer', { icon: '⏱️', duration: 3000 });
+        handleCancel(data);
+      }, 30000);
+    };
+
+    window.addEventListener('outgoing-call-started', onStart);
+
+    return () => {
+      clearTimers();
+      socket.off('call-accepted');
+      socket.off('call-rejected');
+      socket.off('call-failed');
+      socket.off('call-cancelled');
+      window.removeEventListener('outgoing-call-started', onStart);
+    };
+  }, [socket, navigate, handleCancel, clearTimers]);
+
+  if (!outgoingCall) return null;
+
+  return (
+    <OutgoingCall
+      receiver={{ username: outgoingCall.receiverName, avatar: outgoingCall.receiverAvatar }}
+      onCancel={() => handleCancel()}
+      countdown={countdown}        // ← NEW prop
+    />
+  );
+}
+
 
 function GlobalOutgoingCall() {
   const { socket, emit } = useSocket();

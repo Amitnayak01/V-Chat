@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useAnimation } from 'framer-motion';
 import VideoTile from './VideoTile';
 import ScreenShareView from './ScreenShareView';
 
@@ -9,7 +9,6 @@ const toMap = (rs) =>
 // ── Responsive hook: watches the container size ───────────────────────────────
 function useContainerSize(ref) {
   const [size, setSize] = useState({ width: 0, height: 0, isLandscape: false });
-
   useEffect(() => {
     if (!ref.current) return;
     const ro = new ResizeObserver(([entry]) => {
@@ -19,8 +18,88 @@ function useContainerSize(ref) {
     ro.observe(ref.current);
     return () => ro.disconnect();
   }, [ref]);
-
   return size;
+}
+
+// ── Corner snap hook ──────────────────────────────────────────────────────────
+// Keeps the PIP in one of four corners. On pointer-up it snaps to the nearest.
+// Returns { corner, pipStyle, handlers, controls }
+//   corner: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
+//   pipStyle: position CSS to place the animated wrapper
+//   handlers: { onPointerDown, onPointerMove, onPointerUp }
+//   controls: framer-motion AnimationControls for the inner div
+function useCornerSnap({ pipW, pipH, margin = 14 }) {
+  // Which corner the PIP currently lives in
+  const [corner, setCorner] = useState('top-right');
+  // Live drag offset from the corner anchor (reset to 0,0 after snap)
+  const [drag, setDrag]     = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const controls  = useAnimation();
+  const dragStart = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
+  const containerRef = useRef(null); // passed in via closure from component
+
+  // CSS position for each corner anchor (the PIP is absolutely positioned
+  // from the corner itself, so we only need one anchor direction per axis).
+  const anchorStyle = (c) => {
+    const base = { position: 'absolute', zIndex: 30 };
+    if (c === 'top-right')    return { ...base, top:    margin, right:  margin };
+    if (c === 'top-left')     return { ...base, top:    margin, left:   margin };
+    if (c === 'bottom-right') return { ...base, bottom: margin, right:  margin };
+    if (c === 'bottom-left')  return { ...base, bottom: margin, left:   margin };
+    return base;
+  };
+
+  const onPointerDown = useCallback((e) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    dragStart.current = { mx: e.clientX, my: e.clientY, ox: drag.x, oy: drag.y };
+  }, [drag]);
+
+  const onPointerMove = useCallback((e) => {
+    if (!isDragging) return;
+    const d  = dragStart.current;
+    const dx = e.clientX - d.mx;
+    const dy = e.clientY - d.my;
+
+    // Flip sign so drag feels natural regardless of which corner we're anchored to
+    const isRight  = corner === 'top-right'    || corner === 'bottom-right';
+    const isBottom = corner === 'bottom-right' || corner === 'bottom-left';
+
+    setDrag({
+      x: d.ox + (isRight  ? -dx : dx),
+      y: d.oy + (isBottom ? -dy : dy),
+    });
+  }, [isDragging, corner]);
+
+  const onPointerUp = useCallback((e, containerEl) => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    const rect = containerEl?.getBoundingClientRect();
+    if (!rect) { setDrag({ x: 0, y: 0 }); return; }
+
+    // Current PIP centre in container-relative coords
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+
+    // Pick nearest corner
+    const goLeft   = cx < rect.width  / 2;
+    const goTop    = cy < rect.height / 2;
+    const newCorner =
+      goTop  && !goLeft ? 'top-right'    :
+      goTop  &&  goLeft ? 'top-left'     :
+      !goTop && !goLeft ? 'bottom-right' :
+                          'bottom-left';
+
+    setCorner(newCorner);
+
+    // Animate the drag offset back to zero (snapping illusion)
+    controls.start({ x: 0, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } });
+    setDrag({ x: 0, y: 0 });
+  }, [isDragging, controls]);
+
+  return { corner, drag, isDragging, anchorStyle, controls, onPointerDown, onPointerMove, onPointerUp };
 }
 
 const CallLayout = memo(({
@@ -36,16 +115,23 @@ const CallLayout = memo(({
   presenterUserId = null,
   onStopSharing,
   onControlsReveal,
-  hostMutedIds    = new Set(),  // ── MUTE CONTROL: Set of userId muted by host
+  hostMutedIds    = new Set(),
 }) => {
   // ── ALL hooks declared unconditionally at the top ──────────────────────
-  const containerRef = useRef(null);
+  const containerRef  = useRef(null);
   const { isLandscape } = useContainerSize(containerRef);
 
-  const [swapped,  setSwapped]  = useState(false);
-  const [pipPos,   setPipPos]   = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const dragRef = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+  const [swapped, setSwapped] = useState(false);
+
+  // PIP dimensions (responsive)
+  const PIP_W = 'clamp(88px, 22vw, 118px)';
+  const PIP_H = 'clamp(124px, 30vw, 166px)';
+
+  const {
+    corner, drag, isDragging,
+    anchorStyle, controls,
+    onPointerDown, onPointerMove, onPointerUp,
+  } = useCornerSnap({ pipW: 118, pipH: 166 });
 
   const remoteMap     = useMemo(() => toMap(remoteStreams), [remoteStreams]);
   const remoteEntries = useMemo(() => Array.from(remoteMap.entries()), [remoteMap]);
@@ -76,22 +162,6 @@ const CallLayout = memo(({
     })),
   ], [localUserId, localStream, localUsername, isMuted, isVideoOff, remoteEntries, getUsername, hostMutedIds]);
 
-  // PIP drag handlers — declared unconditionally
-  const onPointerDown = useCallback((e) => {
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setDragging(true);
-    dragRef.current = { mx: e.clientX, my: e.clientY, px: pipPos.x, py: pipPos.y };
-  }, [pipPos]);
-
-  const onPointerMove = useCallback((e) => {
-    if (!dragging) return;
-    const d = dragRef.current;
-    setPipPos({ x: d.px + (e.clientX - d.mx), y: d.py + (e.clientY - d.my) });
-  }, [dragging]);
-
-  const onPointerUp = useCallback(() => setDragging(false), []);
-
   // ── Conditional renders AFTER all hooks ───────────────────────────────
 
   if (screenInfo) {
@@ -108,23 +178,19 @@ const CallLayout = memo(({
     );
   }
 
-  // ── Solo view ─────────────────────────────────────────────────────────
+  // ── Solo ──────────────────────────────────────────────────────────────
   if (totalCount === 1) {
     return (
       <div ref={containerRef} className="w-full h-full relative bg-black">
-        <VideoTile
-          stream={localStream} username={localUsername}
+        <VideoTile stream={localStream} username={localUsername}
           isMuted={isMuted} isVideoOff={isVideoOff} isLocal
-          className="w-full h-full rounded-none"
-        />
+          className="w-full h-full rounded-none" />
         <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
       </div>
     );
   }
 
   // ── 2-person ──────────────────────────────────────────────────────────
-  // Portrait/mobile : remote fills screen, local PIP top-right
-  // Landscape/desktop: side-by-side equal halves
   if (totalCount === 2) {
     const remoteId     = remoteEntries[0][0];
     const remoteStream = remoteEntries[0][1];
@@ -149,8 +215,7 @@ const CallLayout = memo(({
           ].map(t => (
             <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
               <VideoTile
-                stream={t.stream}
-                username={t.username}
+                stream={t.stream} username={t.username}
                 isMuted={t.isLocal ? isMuted : hostMutedIds.has(t.id)}
                 isVideoOff={t.isLocal ? isVideoOff : false}
                 isLocal={t.isLocal}
@@ -164,66 +229,71 @@ const CallLayout = memo(({
       );
     }
 
-    // Mobile portrait: remote full-screen + draggable PIP top-right
+    // Mobile portrait: remote full-screen + corner-snapping self PIP
     return (
       <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-black">
+        {/* Remote fills entire screen */}
         <VideoTile
-          stream={mainStream}
-          username={mainUsername}
+          stream={mainStream} username={mainUsername}
           isMuted={mainIsLocal ? isMuted : hostMutedIds.has(mainId)}
           isVideoOff={mainIsLocal ? isVideoOff : false}
           isMutedByHost={!mainIsLocal && hostMutedIds.has(mainId)}
-          isLocal={mainIsLocal}
-          isActive={activeSpeaker === mainId}
+          isLocal={mainIsLocal} isActive={activeSpeaker === mainId}
           className="w-full h-full rounded-none"
         />
         <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
 
-        {/* Draggable PIP — top-right */}
+        {/* Self PIP — corner-snapping, draggable */}
         <div
-          className="absolute z-30 select-none"
           style={{
-            top:   `calc(16px + ${pipPos.y}px)`,
-            right: `calc(14px - ${pipPos.x}px)`,
+            ...anchorStyle(corner),
             touchAction: 'none',
-            cursor: dragging ? 'grabbing' : 'grab',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            userSelect: 'none',
           }}
           onPointerDown={onPointerDown}
           onPointerMove={(e) => { onPointerMove(e); onControlsReveal?.(); }}
-          onPointerUp={onPointerUp}
+          onPointerUp={(e) => onPointerUp(e, containerRef.current)}
         >
+          {/* Animated wrapper snaps back to x:0, y:0 at corner anchor */}
           <motion.div
+            animate={controls}
             whileTap={{ scale: 0.96 }}
-            onClick={() => !dragging && setSwapped(v => !v)}
+            onClick={() => !isDragging && setSwapped(v => !v)}
             className="overflow-hidden"
             style={{
-              width:        'clamp(88px, 22vw, 118px)',
-              height:       'clamp(124px, 30vw, 166px)',
+              width:        PIP_W,
+              height:       PIP_H,
               borderRadius: 16,
               border:       '2px solid rgba(255,255,255,0.22)',
               boxShadow:    '0 4px 24px rgba(0,0,0,0.65)',
+              x: drag.x,
+              y: drag.y,
             }}
           >
             <VideoTile
-              stream={pipStream}
-              username={pipUsername}
+              stream={pipStream} username={pipUsername}
               isMuted={pipIsLocal ? isMuted : false}
               isVideoOff={pipIsLocal ? isVideoOff : false}
-              isLocal={pipIsLocal}
-              isFloating
+              isLocal={pipIsLocal} isFloating
               isActive={activeSpeaker === pipId}
               className="w-full h-full rounded-none"
             />
           </motion.div>
+
+          {/* Corner hint label */}
+          {!isDragging && (
+            <p className="text-center text-white/25 text-[9px] mt-1 tracking-wide select-none">
+              tap to swap
+            </p>
+          )}
         </div>
       </div>
     );
   }
 
   // ── 3-person ──────────────────────────────────────────────────────────
-  // Portrait/mobile : 2 equal tiles top row, 1 full-width bottom
-  // Landscape/desktop: 1 large tile left (2/3), 2 stacked tiles right (1/3)
   if (totalCount === 3) {
     const active = remoteEntries.find(([uid]) => uid === activeSpeaker);
     const [featuredId, featuredStream] = active ?? remoteEntries[0];
@@ -237,29 +307,23 @@ const CallLayout = memo(({
     ];
 
     if (isLandscape) {
-      // Desktop: large featured left + 2 stacked right
+      // Desktop: large featured left (2/3) + 2 stacked right (1/3)
       return (
         <div ref={containerRef} className="w-full h-full bg-black flex" style={{ gap: 4, padding: 4 }}>
-          {/* Large left tile (active speaker / first remote) */}
           <div className="overflow-hidden rounded-2xl" style={{ flex: 2 }}>
             <VideoTile
-              stream={featuredStream}
-              username={featuredUsername}
-              isMuted={hostMutedIds.has(featuredId)}
-              isVideoOff={false}
-              isLocal={false}
-              isMutedByHost={hostMutedIds.has(featuredId)}
+              stream={featuredStream} username={featuredUsername}
+              isMuted={hostMutedIds.has(featuredId)} isVideoOff={false}
+              isLocal={false} isMutedByHost={hostMutedIds.has(featuredId)}
               isActive={activeSpeaker === featuredId}
               className="w-full h-full rounded-none"
             />
           </div>
-          {/* Two stacked tiles on the right */}
           <div className="flex flex-col" style={{ flex: 1, gap: 4 }}>
             {otherTiles.map(t => (
               <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
                 <VideoTile
-                  stream={t.stream}
-                  username={t.username}
+                  stream={t.stream} username={t.username}
                   isMuted={t.isLocal ? isMuted : hostMutedIds.has(t.id)}
                   isVideoOff={t.isLocal ? isVideoOff : false}
                   isLocal={t.isLocal}
@@ -281,8 +345,7 @@ const CallLayout = memo(({
           {otherTiles.map(t => (
             <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
               <VideoTile
-                stream={t.stream}
-                username={t.username}
+                stream={t.stream} username={t.username}
                 isMuted={t.isLocal ? isMuted : hostMutedIds.has(t.id)}
                 isVideoOff={t.isLocal ? isVideoOff : false}
                 isLocal={t.isLocal}
@@ -295,12 +358,9 @@ const CallLayout = memo(({
         </div>
         <div className="flex-1 overflow-hidden rounded-2xl">
           <VideoTile
-            stream={featuredStream}
-            username={featuredUsername}
-            isMuted={hostMutedIds.has(featuredId)}
-            isVideoOff={false}
-            isLocal={false}
-            isMutedByHost={hostMutedIds.has(featuredId)}
+            stream={featuredStream} username={featuredUsername}
+            isMuted={hostMutedIds.has(featuredId)} isVideoOff={false}
+            isLocal={false} isMutedByHost={hostMutedIds.has(featuredId)}
             isActive={activeSpeaker === featuredId}
             className="w-full h-full rounded-none"
           />
@@ -309,13 +369,8 @@ const CallLayout = memo(({
     );
   }
 
-  // ── 4+ person: equal grid — 2×2 for 4, auto for more ─────────────────
-  // Landscape gets 3 cols for 5-6 people, portrait keeps 2 cols
-  const cols = (() => {
-    if (camTiles.length <= 4) return 2;
-    if (isLandscape)          return 3;
-    return 2;
-  })();
+  // ── 4+ person: equal grid ─────────────────────────────────────────────
+  const cols = camTiles.length <= 4 ? 2 : isLandscape ? 3 : 2;
   const rows = Math.ceil(camTiles.length / cols);
 
   return (
@@ -326,19 +381,14 @@ const CallLayout = memo(({
         display:             'grid',
         gridTemplateColumns: `repeat(${cols}, 1fr)`,
         gridTemplateRows:    `repeat(${rows}, 1fr)`,
-        gap:     4,
-        padding: 4,
+        gap: 4, padding: 4,
       }}
     >
       {camTiles.map(p => (
         <VideoTile
-          key={p.id}
-          stream={p.stream}
-          username={p.username}
-          isMuted={p.isMuted}
-          isVideoOff={p.isVideoOff}
-          isLocal={p.isLocal}
-          isMutedByHost={p.isMutedByHost}
+          key={p.id} stream={p.stream} username={p.username}
+          isMuted={p.isMuted} isVideoOff={p.isVideoOff}
+          isLocal={p.isLocal} isMutedByHost={p.isMutedByHost}
           isActive={activeSpeaker === p.id}
           className="rounded-2xl"
         />

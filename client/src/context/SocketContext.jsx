@@ -76,20 +76,23 @@ export const SocketProvider = ({ children }) => {
       setConnected(false);
     });
 
-    // ── online-users-list (sent by server after user-online) ───────────────
-    newSocket.on('online-users-list', ({ users }) => {
-      setOnlineUsers(users.filter(id => id !== user._id));
-    });
+// ✅ REPLACE WITH
+newSocket.on('online-users-list', ({ users }) => {
+  setOnlineUsers(
+    (users || [])
+      .map(id => id?.toString())
+      .filter(id => id !== user._id?.toString())
+  );
+});
 
-    // ── individual status changes ──────────────────────────────────────────
-    newSocket.on('user-status-change', ({ userId, status }) => {
-      if (userId === user._id) return; // ignore self
-      setOnlineUsers(prev =>
-        status === 'online'
-          ? prev.includes(userId) ? prev : [...prev, userId]
-          : prev.filter(id => id !== userId)
-      );
-    });
+newSocket.on('user-status-change', ({ userId, status }) => {
+  if (userId?.toString() === user._id?.toString()) return;
+  setOnlineUsers(prev =>
+    status === 'online'
+      ? prev.includes(userId.toString()) ? prev : [...prev, userId.toString()]
+      : prev.filter(id => id !== userId?.toString())
+  );
+});
 
     setSocket(newSocket);
 

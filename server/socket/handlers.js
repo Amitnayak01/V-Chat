@@ -234,11 +234,14 @@ export const handleSocketConnection = (io) => {
   }
 });
 
+
+// ✅ REPLACE WITH
 socket.on('get-online-users', () => {
   socket.emit('online-users-list', {
-    userIds: Array.from(userSockets.keys()),
+    users: Array.from(userSockets.keys()),  // ← matches what client expects
   });
 });
+
 
 socket.on('cancel-invite-to-video-room', ({ roomId, inviteeId, inviterId }) => {
   const inviteeSocketId = userSockets.get(inviteeId);
