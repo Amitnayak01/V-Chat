@@ -23,7 +23,8 @@ import IncomingCall      from './components/Dashboard/IncomingCall';
 import OutgoingCall      from './components/Dashboard/OutgoingCall';
 
 // ─── SoundEngine ──────────────────────────────────────────────────────────────
-import { SoundEngine } from './utils/SoundEngine';
+import { SoundEngine }       from './utils/SoundEngine';
+import { readSoundSettings } from './hooks/useSoundSettings';
 
 // ─── Admin imports ────────────────────────────────────────────────────────────
 import AdminLayout         from './components/Admin/AdminLayout';
@@ -45,6 +46,51 @@ function AdminRoute({ children }) {
   if (!user)                                        return <Navigate to="/login"     replace />;
   if (!['admin', 'superadmin'].includes(user.role)) return <Navigate to="/dashboard" replace />;
   return children;
+}
+
+// ─── Global Message Sound ─────────────────────────────────────────────────────
+// Plays notification sound for incoming DMs from anywhere in the app.
+// ChatWindow suppresses the sound while that conversation is open — this
+// component handles every other case (other tabs, background, etc.)
+function GlobalMessageSound() {
+  const { socket }   = useSocket();
+  const { user }     = useAuth();
+  // Track which conversation is currently open so we don't double-play
+  const activeConvRef = useRef(null);
+
+  // ChatWindow signals the active conversation via a custom event
+  useEffect(() => {
+    const onOpen  = (e) => { activeConvRef.current = e.detail?.conversationId ?? null; };
+    const onClose = ()  => { activeConvRef.current = null; };
+    window.addEventListener('chat-window-opened', onOpen);
+    window.addEventListener('chat-window-closed', onClose);
+    return () => {
+      window.removeEventListener('chat-window-opened', onOpen);
+      window.removeEventListener('chat-window-closed', onClose);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewMsg = (message) => {
+      const senderId = message?.sender?._id ?? message?.sender;
+      const isFromOther = senderId && String(senderId) !== String(user?._id);
+      if (!isFromOther) return;
+
+      // Skip if the receiver currently has this conversation open
+      if (activeConvRef.current && activeConvRef.current === message?.conversationId) return;
+
+      const s = readSoundSettings();
+      SoundEngine.playMessageTone(s.messages.tone, s.messages.volume);
+      if (s.messages.vibration) SoundEngine.vibrate([100]);
+    };
+
+    socket.on('new-direct-message', handleNewMsg);
+    return () => socket.off('new-direct-message', handleNewMsg);
+  }, [socket, user]);
+
+  return null;
 }
 
 // ─── Global Broadcast ────────────────────────────────────────────────────────
@@ -618,6 +664,7 @@ function App() {
                 <GlobalOutgoingCall />
                 <GlobalBroadcast />
                 <GlobalVideoInvite />
+                <GlobalMessageSound />
                 <IncomingAudioCall />
                 <AudioCallUI />
                 <FloatingCallWindow />
