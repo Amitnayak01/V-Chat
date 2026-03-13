@@ -7,12 +7,16 @@ import { readSoundSettings } from '../../hooks/useSoundSettings';
 const CIRCUMFERENCE = 2 * Math.PI * 46;
 
 const IncomingCall = ({ caller, onAccept, onReject, countdown = 30 }) => {
+ 
   useEffect(() => {
-    const s = readSoundSettings();
-    SoundEngine.playVideoCallTone(s.videoCall.ringtone, s.videoCall.volume);
-    if (s.videoCall.vibration) SoundEngine.vibrate([300, 150, 300]);
-    return () => SoundEngine.stopVideoCallTone();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const s = readSoundSettings();
+  SoundEngine.playVideoCallTone(
+    s.videoCall.ringtone,
+    s.videoCall.volume,
+    s.videoCall.vibration    // ← looping vibration now wired in
+  );
+  return () => SoundEngine.stopVideoCallTone(); // stops audio + vibration
+}, []);
 
   if (!caller) return null;
 

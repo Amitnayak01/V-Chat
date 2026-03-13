@@ -7,11 +7,16 @@ import { readSoundSettings } from '../../hooks/useSoundSettings';
 const CIRCUMFERENCE = 2 * Math.PI * 46;
 
 const OutgoingCall = ({ receiver, onCancel, countdown = 30 }) => {
+  
   useEffect(() => {
-    const s = readSoundSettings();
-    SoundEngine.playVideoCallTone(s.videoCall.ringtone, s.videoCall.volume);
-    return () => SoundEngine.stopVideoCallTone();
-  }, []);
+  const s = readSoundSettings();
+  SoundEngine.playVideoCallTone(
+    s.videoCall.ringtone,
+    s.videoCall.volume,
+    s.videoCall.vibration    // ← looping vibration for outgoing too
+  );
+  return () => SoundEngine.stopVideoCallTone();
+}, []);
 
   if (!receiver) return null;
 

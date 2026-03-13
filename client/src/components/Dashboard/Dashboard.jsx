@@ -392,9 +392,11 @@ const Dashboard = () => {
       const res = await directMessageAPI.getConversations();
       if (res.data?.success) {
         // Count conversations (users) with at least 1 unread message — not total messages
-        const total = (res.data.conversations || []).filter(
-          (c) => (Number(c.unreadCount) || 0) > 0
-        ).length;
+
+
+        const total = (res.data.conversations || []).reduce(
+  (sum, c) => sum + (Number(c.unreadCount) || 0), 0
+);
         setUnreadChats(total);
       }
     } catch (_) {}
@@ -461,8 +463,8 @@ socket.off('call-failed');
     );
 
     /* DM unread count — re-fetch on any relevant socket event */
-    const handleNewMsg   = () => refreshUnread();
-    const handleReadEvt  = () => refreshUnread();
+const handleNewMsg  = () => refreshUnread();
+const handleReadEvt = () => setTimeout(refreshUnread, 400)
 
     socket.on('new-direct-message',       handleNewMsg);
     socket.on('message:read',             handleReadEvt);
@@ -477,7 +479,7 @@ socket.off('call-failed');
       socket.off('message:read',             handleReadEvt);
       socket.off('batch-read-update-direct', handleReadEvt);
     };
-  }, [socket, navigate, refreshUnread]);
+  }, [socket, refreshUnread]);
 
   const saveRecentRoom = useCallback((roomId) => {
     try {

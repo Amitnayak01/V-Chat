@@ -22,6 +22,9 @@ import AudioCallUI       from './components/AudioCall/AudioCallUI';
 import IncomingCall      from './components/Dashboard/IncomingCall';
 import OutgoingCall      from './components/Dashboard/OutgoingCall';
 
+// ─── SoundEngine ──────────────────────────────────────────────────────────────
+import { SoundEngine } from './utils/SoundEngine';
+
 // ─── Admin imports ────────────────────────────────────────────────────────────
 import AdminLayout         from './components/Admin/AdminLayout';
 import AdminDashboard      from './components/Admin/AdminDashboard';
@@ -218,15 +221,19 @@ function GlobalIncomingCall() {
         });
       }, 1000);
 
-      // Auto-dismiss after 30 s (caller's timer also fires, no emit needed)
+      // Auto-dismiss after 30 s
       timerRef.current = setTimeout(() => {
         clearInterval(intervalRef.current);
+        // ── Stop ringtone + vibration on timeout ──
+        SoundEngine.stopVideoCallTone();
         setIncomingCall(null);
       }, 30000);
     });
 
     socket.on('call-cancelled', ({ callerId }) => {
       clearTimers();
+      // ── Stop ringtone + vibration when caller cancels ──
+      SoundEngine.stopVideoCallTone();
       setIncomingCall(prev => prev?.callerId === callerId ? null : prev);
       toast('Caller cancelled the call', { icon: '📵', duration: 3000 });
     });
@@ -242,6 +249,8 @@ function GlobalIncomingCall() {
 
   const handleAccept = () => {
     clearTimers();
+    // ── Stop ringtone + vibration on accept ──
+    SoundEngine.stopVideoCallTone();
     emit('accept-call', {
       callerId: incomingCall.callerId,
       roomId:   incomingCall.roomId,
@@ -253,6 +262,8 @@ function GlobalIncomingCall() {
 
   const handleReject = () => {
     clearTimers();
+    // ── Stop ringtone + vibration on reject ──
+    SoundEngine.stopVideoCallTone();
     emit('reject-call', {
       callerId: incomingCall.callerId,
       userId:   user._id,
@@ -294,6 +305,8 @@ function GlobalOutgoingCall() {
     const call = callOverride || outgoingCallRef.current;
     if (!call) return;
     clearTimers();
+    // ── Stop ringtone + vibration when caller cancels ──
+    SoundEngine.stopVideoCallTone();
     emit('cancel-call', { receiverId: call.receiverId, callerId: user?._id });
     setOutgoingCall(null);
     outgoingCallRef.current = null;
@@ -306,6 +319,8 @@ function GlobalOutgoingCall() {
 
     socket.on('call-accepted', ({ roomId }) => {
       clearTimers();
+      // ── Stop ringtone + vibration when call is accepted ──
+      SoundEngine.stopVideoCallTone();
       setOutgoingCall(null);
       outgoingCallRef.current = null;
       sessionStorage.removeItem('vmeet_calling');
@@ -314,6 +329,8 @@ function GlobalOutgoingCall() {
 
     socket.on('call-rejected', () => {
       clearTimers();
+      // ── Stop ringtone + vibration when call is rejected ──
+      SoundEngine.stopVideoCallTone();
       setOutgoingCall(null);
       outgoingCallRef.current = null;
       sessionStorage.removeItem('vmeet_calling');
@@ -322,6 +339,8 @@ function GlobalOutgoingCall() {
 
     socket.on('call-failed', ({ message }) => {
       clearTimers();
+      // ── Stop ringtone + vibration on failure ──
+      SoundEngine.stopVideoCallTone();
       setOutgoingCall(null);
       outgoingCallRef.current = null;
       sessionStorage.removeItem('vmeet_calling');
@@ -330,6 +349,8 @@ function GlobalOutgoingCall() {
 
     socket.on('call-cancelled', () => {
       clearTimers();
+      // ── Stop ringtone + vibration when cancelled ──
+      SoundEngine.stopVideoCallTone();
       setOutgoingCall(null);
       outgoingCallRef.current = null;
       sessionStorage.removeItem('vmeet_calling');

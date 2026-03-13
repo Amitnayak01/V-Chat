@@ -253,13 +253,18 @@ const Chat = ({ initialConversation, onChatOpen }) => {
       );
     };
 
-    /* batch read */
-    const handleBatchRead = ({ conversationId, readBy }) => {
-      if (readBy === user?._id || readBy?._id === user?._id) {
-        upsertConversation(conversationId, (c) => ({ ...c, unreadCount: 0 }));
-        setTotalUnread((prev) => Math.max(0, prev));
-      }
-    };
+const handleBatchRead = ({ conversationId, readBy }) => {
+  if (readBy === user?._id || readBy?._id === user?._id) {
+    setConversations((prev) => {
+      const conv = prev.find((c) => c.conversationId === conversationId);
+      const wasUnread = conv?.unreadCount || 0;
+      if (wasUnread > 0) setTotalUnread((t) => Math.max(0, t - wasUnread));
+      return prev.map((c) =>
+        c.conversationId === conversationId ? { ...c, unreadCount: 0 } : c
+      );
+    });
+  }
+};
 
     /* ✅ Pin update from socket (other device / server broadcast) */
     const handleConvPinned = ({ conversationId, pinned }) => {
