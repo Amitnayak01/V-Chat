@@ -83,7 +83,7 @@ function GlobalMessageSound() {
 
       const s = readSoundSettings();
       SoundEngine.playMessageTone(s.messages.tone, s.messages.volume);
-      if (s.messages.vibration) SoundEngine.vibrate([100]);
+      SoundEngine.vibrate([100]);
     };
 
     socket.on('new-direct-message', handleNewMsg);
