@@ -37,21 +37,13 @@ const CallLayout = memo(({
   }, [participants]);
 
   const screenInfo = useMemo(() => {
-    // ONLY trust the explicit socket-signalled presenterUserId.
-    // Never auto-detect via track labels or contentHint — that causes
-    // hall-of-mirrors loops when the shared tab IS the video call itself.
     if (!presenterUserId) return null;
-
-    // Local user is sharing — use the dedicated screenStream (not localStream)
     if (presenterUserId === localUserId) {
       if (screenStream) return { stream: screenStream, isLocal: true, name: localUsername };
-      return null; // screenStream not yet assigned, wait
+      return null;
     }
-
-    // Remote presenter — their replaced video track arrives in remoteStreams
     const rs = remoteMap.get(presenterUserId);
     if (rs) return { stream: rs, isLocal: false, name: getUsername(presenterUserId) };
-
     return null;
   }, [presenterUserId, screenStream, localUserId, localUsername, remoteMap, getUsername]);
 
@@ -80,35 +72,6 @@ const CallLayout = memo(({
 
   const onPointerUp = useCallback(() => setDragging(false), []);
 
-  // Main/PIP layout computation — must be declared even when screen sharing
-  const layout = useMemo(() => {
-    if (totalCount <= 1 || totalCount >= 4 || !remoteEntries.length) {
-      return { mainId: null, mainStream: null, mainUsername: null, mainIsLocal: false, pipEntries: [] };
-    }
-    let mId, mStream, mUsername, mIsLocal;
-    if (totalCount === 2) {
-      if (swapped) {
-        mId = localUserId; mStream = localStream; mUsername = localUsername; mIsLocal = true;
-      } else {
-        [mId, mStream] = remoteEntries[0];
-        mUsername = getUsername(mId); mIsLocal = false;
-      }
-    } else {
-      const active = remoteEntries.find(([uid]) => uid === activeSpeaker);
-      [mId, mStream] = active ?? remoteEntries[0];
-      mUsername = getUsername(mId); mIsLocal = false;
-    }
-    const pip = totalCount === 2
-      ? swapped
-        ? [{ id: remoteEntries[0][0], stream: remoteEntries[0][1], isLocal: false }]
-        : [{ id: '__local__', stream: localStream, isLocal: true }]
-      : [
-          { id: '__local__', stream: localStream, isLocal: true },
-          ...remoteEntries.filter(([uid]) => uid !== mId).map(([uid, s]) => ({ id: uid, stream: s, isLocal: false })),
-        ];
-    return { mainId: mId, mainStream: mStream, mainUsername: mUsername, mainIsLocal: mIsLocal, pipEntries: pip };
-  }, [totalCount, swapped, localUserId, localStream, localUsername, remoteEntries, getUsername, activeSpeaker]);
-
   // ── Conditional renders AFTER all hooks ───────────────────────────────
 
   if (screenInfo) {
@@ -123,6 +86,7 @@ const CallLayout = memo(({
     );
   }
 
+  // ── Solo view ─────────────────────────────────────────────────────────
   if (totalCount === 1) {
     return (
       <div className="w-full h-full relative bg-black">
@@ -134,83 +98,160 @@ const CallLayout = memo(({
     );
   }
 
-  if (totalCount >= 4) {
-    const cols = 2;
-    const rows = Math.ceil(camTiles.length / cols);
+  // ── 2-person: remote fills screen, local PIP draggable in top-right ───
+  if (totalCount === 2) {
+    const remoteId     = remoteEntries[0][0];
+    const remoteStream = remoteEntries[0][1];
+
+    const mainStream   = swapped ? localStream   : remoteStream;
+    const mainUsername = swapped ? localUsername : getUsername(remoteId);
+    const mainIsLocal  = swapped;
+    const mainId       = swapped ? localUserId   : remoteId;
+
+    const pipStream   = swapped ? remoteStream : localStream;
+    const pipUsername = swapped ? getUsername(remoteId) : localUsername;
+    const pipIsLocal  = !swapped;
+    const pipId       = swapped ? remoteId     : localUserId;
+
     return (
-      <div className="w-full h-full bg-black p-1" style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gridTemplateRows: `repeat(${rows}, 1fr)`,
-        gap: 4,
-      }}>
-        {camTiles.map(p => (
-          <VideoTile key={p.id} stream={p.stream} username={p.username}
-            isMuted={p.isMuted} isVideoOff={p.isVideoOff} isLocal={p.isLocal}
-            isMutedByHost={p.isMutedByHost}
-            isActive={activeSpeaker === p.id} className="rounded-xl" />
-        ))}
+      <div className="w-full h-full relative overflow-hidden bg-black">
+        {/* Remote fills entire screen */}
+        <VideoTile
+          stream={mainStream}
+          username={mainUsername}
+          isMuted={mainIsLocal ? isMuted : hostMutedIds.has(mainId)}
+          isVideoOff={mainIsLocal ? isVideoOff : false}
+          isMutedByHost={!mainIsLocal && hostMutedIds.has(mainId)}
+          isLocal={mainIsLocal}
+          isActive={activeSpeaker === mainId}
+          className="w-full h-full rounded-none"
+        />
+
+        {/* Subtle gradient overlays */}
+        <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+
+        {/* Local PIP — draggable, anchored top-right, tap to swap */}
+        <div
+          className="absolute z-30 select-none"
+          style={{
+            top:   `calc(16px + ${pipPos.y}px)`,
+            right: `calc(14px - ${pipPos.x}px)`,
+            touchAction: 'none',
+            cursor: dragging ? 'grabbing' : 'grab',
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={(e) => { onPointerMove(e); onControlsReveal?.(); }}
+          onPointerUp={onPointerUp}
+        >
+          <motion.div
+            whileTap={{ scale: 0.96 }}
+            onClick={() => !dragging && setSwapped(v => !v)}
+            className="overflow-hidden"
+            style={{
+              width:        'clamp(88px, 22vw, 118px)',
+              height:       'clamp(124px, 30vw, 166px)',
+              borderRadius: 16,
+              border:       '2px solid rgba(255,255,255,0.22)',
+              boxShadow:    '0 4px 24px rgba(0,0,0,0.65)',
+            }}
+          >
+            <VideoTile
+              stream={pipStream}
+              username={pipUsername}
+              isMuted={pipIsLocal ? isMuted : false}
+              isVideoOff={pipIsLocal ? isVideoOff : false}
+              isLocal={pipIsLocal}
+              isFloating
+              isActive={activeSpeaker === pipId}
+              className="w-full h-full rounded-none"
+            />
+          </motion.div>
+        </div>
       </div>
     );
   }
 
-  const { mainId, mainStream, mainUsername, mainIsLocal, pipEntries } = layout;
+  // ── 3-person: top row 2 equal tiles, bottom row 1 full-width tile ─────
+  if (totalCount === 3) {
+    // Active speaker (or first remote) goes full-width on the bottom
+    const active = remoteEntries.find(([uid]) => uid === activeSpeaker);
+    const [bottomId, bottomStream] = active ?? remoteEntries[0];
+    const bottomUsername = getUsername(bottomId);
 
-  return (
-    <div className="w-full h-full relative overflow-hidden bg-black">
-      <VideoTile
-        stream={mainStream} username={mainUsername}
-        isMuted={mainIsLocal ? isMuted : hostMutedIds.has(mainId)}
-        isVideoOff={mainIsLocal ? isVideoOff : false}
-        isMutedByHost={!mainIsLocal && hostMutedIds.has(mainId)}
-        isLocal={mainIsLocal} isActive={activeSpeaker === mainId}
-        className="w-full h-full rounded-none"
-      />
-      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
-      <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+    // The other two tiles share the top row
+    const topTiles = [
+      { id: localUserId, stream: localStream, username: localUsername, isLocal: true },
+      ...remoteEntries
+        .filter(([uid]) => uid !== bottomId)
+        .map(([uid, s]) => ({ id: uid, stream: s, username: getUsername(uid), isLocal: false })),
+    ];
 
-      <div
-        className="absolute z-30 select-none"
-        style={{
-          bottom: `calc(88px - ${pipPos.y}px)`,
-          right: `calc(14px - ${pipPos.x}px)`,
-          touchAction: 'none',
-          cursor: dragging ? 'grabbing' : 'grab',
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onControlsReveal}
-        onPointerUp={onPointerUp}
-      >
-        <div className="flex flex-col items-end gap-2">
-          {pipEntries.map(p => (
-            <motion.div
-              key={p.id}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => totalCount === 2 && setSwapped(v => !v)}
-              className="overflow-hidden rounded-2xl shadow-2xl cursor-pointer flex-shrink-0"
-              style={{
-                width: 'clamp(88px,10vw,118px)',
-                height: 'clamp(124px,14vw,166px)',
-                border: '2px solid rgba(255,255,255,0.18)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.65)',
-              }}
-            >
+    return (
+      <div className="w-full h-full bg-black flex flex-col" style={{ gap: 4, padding: 4 }}>
+        {/* Top row: 2 equal tiles */}
+        <div className="flex flex-1" style={{ gap: 4 }}>
+          {topTiles.map(t => (
+            <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
               <VideoTile
-                stream={p.stream}
-                username={p.isLocal ? localUsername : getUsername(p.id)}
-                isMuted={p.isLocal ? isMuted : false}
-                isVideoOff={p.isLocal ? isVideoOff : false}
-                isLocal={p.isLocal} isFloating
-                isActive={activeSpeaker === (p.isLocal ? localUserId : p.id)}
+                stream={t.stream}
+                username={t.username}
+                isMuted={t.isLocal ? isMuted : hostMutedIds.has(t.id)}
+                isVideoOff={t.isLocal ? isVideoOff : false}
+                isLocal={t.isLocal}
+                isMutedByHost={!t.isLocal && hostMutedIds.has(t.id)}
+                isActive={activeSpeaker === t.id}
                 className="w-full h-full rounded-none"
               />
-            </motion.div>
+            </div>
           ))}
         </div>
-        {totalCount === 2 && (
-          <p className="text-center text-white/25 text-[9px] mt-1 tracking-wide">tap to swap</p>
-        )}
+
+        {/* Bottom row: 1 full-width tile */}
+        <div className="flex-1 overflow-hidden rounded-2xl">
+          <VideoTile
+            stream={bottomStream}
+            username={bottomUsername}
+            isMuted={hostMutedIds.has(bottomId)}
+            isVideoOff={false}
+            isLocal={false}
+            isMutedByHost={hostMutedIds.has(bottomId)}
+            isActive={activeSpeaker === bottomId}
+            className="w-full h-full rounded-none"
+          />
+        </div>
       </div>
+    );
+  }
+
+  // ── 4+ person: equal 2×2 grid (or auto grid for more) ────────────────
+  const cols = totalCount <= 4 ? 2 : Math.ceil(Math.sqrt(camTiles.length));
+  const rows = Math.ceil(camTiles.length / cols);
+
+  return (
+    <div
+      className="w-full h-full bg-black"
+      style={{
+        display:             'grid',
+        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        gridTemplateRows:    `repeat(${rows}, 1fr)`,
+        gap:     4,
+        padding: 4,
+      }}
+    >
+      {camTiles.map(p => (
+        <VideoTile
+          key={p.id}
+          stream={p.stream}
+          username={p.username}
+          isMuted={p.isMuted}
+          isVideoOff={p.isVideoOff}
+          isLocal={p.isLocal}
+          isMutedByHost={p.isMutedByHost}
+          isActive={activeSpeaker === p.id}
+          className="rounded-2xl"
+        />
+      ))}
     </div>
   );
 });
