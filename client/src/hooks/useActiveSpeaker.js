@@ -1,17 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-/**
- * Detects the active speaker from a map of streams.
- * Returns userId of the loudest speaker, updated ~every 80ms.
- *
- * @param {string}              localUserId
- * @param {MediaStream|null}    localStream
- * @param {Map<string, MediaStream>} remoteStreams
- * @returns {string|null} userId of active speaker, or null
- */
-const useActiveSpeaker = (localUserId, localStream, remoteStreams) => {
+const useActiveSpeaker = (localUserId, localStream, remoteStreams, enabled = false) => {
   const [activeSpeaker, setActiveSpeaker] = useState(null);
-  const analysersRef = useRef(new Map()); // userId -> { analyser, dataArray, source, ctx }
+  const analysersRef = useRef(new Map());
   const rafRef       = useRef(null);
   const tickRef      = useRef(0);
 
@@ -25,9 +16,7 @@ const useActiveSpeaker = (localUserId, localStream, remoteStreams) => {
       source.connect(analyser);
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       analysersRef.current.set(userId, { analyser, dataArray, source, ctx });
-    } catch (_) {
-      // AudioContext unavailable (SSR, permissions denied, etc.)
-    }
+    } catch (_) {}
   }, []);
 
   const destroyAnalyser = useCallback((userId) => {
@@ -39,8 +28,14 @@ const useActiveSpeaker = (localUserId, localStream, remoteStreams) => {
     }
   }, []);
 
-  // Keep analysers in sync with streams
+  // Keep analysers in sync — but only when enabled
   useEffect(() => {
+    if (!enabled) {
+      for (const id of [...analysersRef.current.keys()]) destroyAnalyser(id);
+      setActiveSpeaker(null);
+      return;
+    }
+
     const currentIds = new Set();
 
     if (localStream && localUserId) {
@@ -59,21 +54,25 @@ const useActiveSpeaker = (localUserId, localStream, remoteStreams) => {
       });
     }
 
-    // Remove stale analysers
     for (const id of analysersRef.current.keys()) {
       if (!currentIds.has(id)) destroyAnalyser(id);
     }
-  }, [localStream, remoteStreams, localUserId, createAnalyser, destroyAnalyser]);
+  }, [enabled, localStream, remoteStreams, localUserId, createAnalyser, destroyAnalyser]);
 
-  // Polling loop — checks volume every ~5 animation frames (~80ms)
+  // Polling loop — only runs when enabled
   useEffect(() => {
+    if (!enabled) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
     const POLL_EVERY = 5;
 
     const poll = () => {
       rafRef.current = requestAnimationFrame(poll);
       if (++tickRef.current % POLL_EVERY !== 0) return;
 
-      let maxVol  = 0.02; // minimum noise threshold
+      let maxVol  = 0.02;
       let loudest = null;
 
       for (const [userId, { analyser, dataArray }] of analysersRef.current) {
@@ -92,7 +91,7 @@ const useActiveSpeaker = (localUserId, localStream, remoteStreams) => {
       cancelAnimationFrame(rafRef.current);
       for (const id of [...analysersRef.current.keys()]) destroyAnalyser(id);
     };
-  }, [destroyAnalyser]);
+  }, [enabled, destroyAnalyser]);
 
   return activeSpeaker;
 };

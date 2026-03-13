@@ -110,8 +110,12 @@ const { user }     = useAuth();
     handlePeerDisconnect, cleanup,
   } = useWebRTC();
 
-  const activeSpeaker = useActiveSpeaker(user._id, localStream, remoteStreams);
-  const { minimizeCall } = useMinimizedCall();
+  const activeSpeaker = useActiveSpeaker(
+  user._id,
+  localStream,
+  remoteStreams,
+  meetingViewMode === 'speaker',   // ← off by default (grid), on in speaker view
+);  const { minimizeCall } = useMinimizedCall();
   // ── Navigate back to wherever the caller came from ────────────────────────
   // Before navigating into a room, callers must save:
   //   sessionStorage.setItem('vmeet_return_path', window.location.pathname)
