@@ -386,7 +386,7 @@ emit('get-online-users', { roomId });
           setTimeout(() => {
             pendingOfferRef.current.delete(userId);
             createOffer(userId);
-          }, 300);
+          }, 800);
         } else {
           createOffer(userId);
         }
@@ -468,8 +468,7 @@ emit('get-online-users', { roomId });
         setTimeout(() => {
           pendingOfferRef.current.delete(userId);
           createOffer(userId);
-        }, 300);
-
+        }, 800);
         pushEvent('user-reconnected', { username });
         toast(`${username} reconnected`, { icon: '🔄' });
       },
@@ -484,7 +483,7 @@ emit('get-online-users', { roomId });
           setTimeout(() => {
             createOffer(uid);
             startRetry(uid);  // ← start watching in case offer fails
-          }, 150);
+          }, 400);
         });
       },
 
