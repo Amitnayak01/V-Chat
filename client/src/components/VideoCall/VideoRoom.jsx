@@ -88,8 +88,6 @@ const VideoRoom = () => {
   // 45-second no-answer timer
   const noAnswerTimerRef = useRef(null);
   const isMinimizingRef = useRef(false);
-  const retryTimersRef  = useRef(new Map()); // userId → retry interval
-  const retryCountRef   = useRef(new Map()); // userId → attempt count
 
   // ── External hooks ───────────────────────────────────────────────────────
  
@@ -144,52 +142,6 @@ const { user }     = useAuth();
     setTimeout(() => setFloatReactions(prev => prev.filter(r => r.id !== id)), 2000);
   }, []);
 
-
-// ── Retry logic: if WebRTC doesn't connect within 2s, try again ──────────
-  const MAX_RETRIES = 3;
-
-  const stopRetry = useCallback((userId) => {
-    const timer = retryTimersRef.current.get(userId);
-    if (timer) {
-      clearInterval(timer);
-      retryTimersRef.current.delete(userId);
-    }
-    retryCountRef.current.delete(userId);
-  }, []);
-
-  const startRetry = useCallback((userId) => {
-    // Clear any existing retry loop for this user first
-    stopRetry(userId);
-    retryCountRef.current.set(userId, 0);
-
-    const timer = setInterval(() => {
-      const count = retryCountRef.current.get(userId) ?? 0;
-
-      if (count >= MAX_RETRIES) {
-        console.warn('[Retry] gave up reconnecting to', userId);
-        stopRetry(userId);
-        toast.error('Could not reconnect video. Please rejoin.', { duration: 5000 });
-        return;
-      }
-
-      // Check if already connected — if so stop retrying
-      const streams = remoteStreams;
-      const hasStream = streams.has(userId);
-      if (hasStream) {
-        console.log('[Retry] stream found for', userId, '— stopping retry');
-        stopRetry(userId);
-        return;
-      }
-
-      console.log(`[Retry] attempt ${count + 1} for`, userId);
-      retryCountRef.current.set(userId, count + 1);
-      handlePeerDisconnect(userId);
-      setTimeout(() => createOffer(userId), 150);
-    }, 2000);
-
-    retryTimersRef.current.set(userId, timer);
-  }, [stopRetry, createOffer, handlePeerDisconnect, remoteStreams]);
-
   const pushHandNotif = useCallback((userId, username, type) => {
     const id = `hand-${++handNotifIdRef.current}`;
     setHandNotifications(prev => [...prev, { id, userId, username, type, ts: Date.now() }]);
@@ -231,45 +183,19 @@ const { user }     = useAuth();
   }, [participants]);
 
 // ── Effect 1: Init media ──────────────────────────────────────────────────
+ useEffect(() => {
+  const isRestoring = sessionStorage.getItem('vmeet_minimized') === 'true';
+  sessionStorage.removeItem('vmeet_minimized');
 
-
-useEffect(() => {
-    // If restoring from minimized, streams and peer connections are
-    // already alive — skip cleanup and re-init entirely.
-    if (localStream) {
-      console.log('[VideoRoom] restoring from minimized — skipping cleanup+reinit');
-      return () => {
-        if (isMinimizingRef.current) {
-          isMinimizingRef.current = false;
-          hasJoined.current       = false;
-          otherJoinedRef.current  = false;
-          return;
-        }
-        if (noAnswerTimerRef.current) {
-          clearTimeout(noAnswerTimerRef.current);
-          noAnswerTimerRef.current = null;
-        }
-        if (intentionalLeave.current) {
-          emit('leave-room', { roomId, userId: user._id });
-          clearCurrentRoom();
-          sessionStorage.removeItem('vmeet_calling');
-        }
-        if (screenStreamRef.current) {
-          screenStreamRef.current.getTracks().forEach(t => t.stop());
-          screenStreamRef.current = null;
-        }
-        hasJoined.current      = false;
-        otherJoinedRef.current = false;
-        cleanup();
-      };
-    }
-
-    // Fresh mount — full init as normal
+  if (!isRestoring) {
     cleanup();
-
     initializeMedia(user._id).then(result => {
       if (!result.success) toast.error('Could not access camera / microphone');
     });
+  }
+  // If restoring: streams + peer connections are still alive in WebRTCContext.
+  // Effect 2 will re-emit join-room (hasJoined.current = false on remount)
+  // and the server will re-sync participants without tearing down peers.
 
 
 
@@ -393,11 +319,12 @@ emit('get-online-users', { roomId });
       },
 
 
+
+
       'user-left': ({ userId }) => {
         const leaving = participantsRef.current.find(p => (p.userId ?? p) === userId);
         const name    = leaving?.username ?? 'Someone';
         handlePeerDisconnect(userId);
-        stopRetry(userId);
         // Pure filter only — navigation is handled by Effect 5 watching participants
         setParticipants(prev =>
           prev.filter(p => typeof p === 'string' ? p !== userId : p.userId !== userId)
@@ -461,7 +388,6 @@ emit('get-online-users', { roomId });
 
         setIsReconnecting(false);
         otherJoinedRef.current = true;
-        stopRetry(userId);
         if (updated) setParticipants(updated);
         handlePeerDisconnect(userId);
 
@@ -469,24 +395,21 @@ emit('get-online-users', { roomId });
           pendingOfferRef.current.delete(userId);
           createOffer(userId);
         }, 800);
+
         pushEvent('user-reconnected', { username });
         toast(`${username} reconnected`, { icon: '🔄' });
       },
-
 'room-rejoin-ack': ({ roomId: ack, members }) => {
-        if (ack !== roomId) return;
-        setIsReconnecting(false);
-        setParticipants(members);
-        const others = members.filter(m => (m.userId ?? m) !== user._id);
-        others.forEach(m => {
-          const uid = m.userId ?? m;
-          setTimeout(() => {
-            createOffer(uid);
-            startRetry(uid);  // ← start watching in case offer fails
-          }, 400);
-        });
-      },
-
+  if (ack !== roomId) return;
+  setIsReconnecting(false);
+  setParticipants(members);
+  const others = members.filter(m => (m.userId ?? m) !== user._id);
+  others.forEach(m => {
+    const uid = m.userId ?? m;
+    setTimeout(() => createOffer(uid), 400);
+  });
+},
+   
 
       // WebRTC signalling
       'webrtc-offer':         ({ offer, from })     => handleOffer(from, roomId, offer),
@@ -1026,6 +949,7 @@ const handleEndCall = useCallback(() => {
 const handleMinimize = useCallback(() => {
   if (isRecording) { toast.error('Stop recording before minimizing'); return; }
   isMinimizingRef.current = true;
+    sessionStorage.setItem('vmeet_minimized', 'true');   // ← ADD THIS LINE
   minimizeCall({
     roomId,
     userId:        user._id,

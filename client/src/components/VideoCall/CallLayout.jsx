@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo } from 'react';
-import { motion, useAnimation } from 'framer-motion';
+import { motion } from 'framer-motion';
 import VideoTile from './VideoTile';
 import ScreenShareView from './ScreenShareView';
 
@@ -21,85 +21,61 @@ function useContainerSize(ref) {
   return size;
 }
 
-// ── Corner snap hook ──────────────────────────────────────────────────────────
-// Keeps the PIP in one of four corners. On pointer-up it snaps to the nearest.
-// Returns { corner, pipStyle, handlers, controls }
-//   corner: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
-//   pipStyle: position CSS to place the animated wrapper
-//   handlers: { onPointerDown, onPointerMove, onPointerUp }
-//   controls: framer-motion AnimationControls for the inner div
-function useCornerSnap({ pipW, pipH, margin = 14 }) {
-  // Which corner the PIP currently lives in
-  const [corner, setCorner] = useState('top-right');
-  // Live drag offset from the corner anchor (reset to 0,0 after snap)
-  const [drag, setDrag]     = useState({ x: 0, y: 0 });
+// ── Free-drag PIP hook ────────────────────────────────────────────────────────
+// Lets the user drag the PIP tile freely anywhere inside the container.
+// Clamps position so the tile never leaves the container bounds.
+// Returns { pos, isDragging, handlers }
+//   pos      : { x, y } — top-left corner of the PIP relative to container
+//   isDragging: boolean
+//   handlers : { onPointerDown, onPointerMove, onPointerUp }
+function useFreeDrag({ pipW, pipH, margin = 14, initialPos = null }) {
+  const [pos, setPos] = useState(initialPos ?? { x: null, y: null }); // null = use default (top-right)
   const [isDragging, setIsDragging] = useState(false);
-  const controls  = useAnimation();
-  const dragStart = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
-  const containerRef = useRef(null); // passed in via closure from component
+  const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+  const didMove   = useRef(false);
 
-  // CSS position for each corner anchor (the PIP is absolutely positioned
-  // from the corner itself, so we only need one anchor direction per axis).
-  const anchorStyle = (c) => {
-    const base = { position: 'absolute', zIndex: 30 };
-    if (c === 'top-right')    return { ...base, top:    margin, right:  margin };
-    if (c === 'top-left')     return { ...base, top:    margin, left:   margin };
-    if (c === 'bottom-right') return { ...base, bottom: margin, right:  margin };
-    if (c === 'bottom-left')  return { ...base, bottom: margin, left:   margin };
-    return base;
-  };
+  // Resolve actual pixel position; if still null fall back to top-right corner
+  const resolvePos = useCallback((containerEl) => {
+    if (pos.x !== null) return pos;
+    const rect = containerEl?.getBoundingClientRect() ?? { width: 320, height: 568 };
+    return {
+      x: rect.width  - pipW - margin,
+      y: margin,
+    };
+  }, [pos, pipW, margin]);
 
-  const onPointerDown = useCallback((e) => {
+  const clamp = useCallback((val, lo, hi) => Math.max(lo, Math.min(hi, val)), []);
+
+  const onPointerDown = useCallback((e, containerEl) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
-    dragStart.current = { mx: e.clientX, my: e.clientY, ox: drag.x, oy: drag.y };
-  }, [drag]);
+    didMove.current = false;
 
-  const onPointerMove = useCallback((e) => {
+    const current = resolvePos(containerEl);
+    dragStart.current = { mx: e.clientX, my: e.clientY, px: current.x, py: current.y };
+  }, [resolvePos]);
+
+  const onPointerMove = useCallback((e, containerEl) => {
     if (!isDragging) return;
-    const d  = dragStart.current;
-    const dx = e.clientX - d.mx;
-    const dy = e.clientY - d.my;
+    const dx = e.clientX - dragStart.current.mx;
+    const dy = e.clientY - dragStart.current.my;
 
-    // Flip sign so drag feels natural regardless of which corner we're anchored to
-    const isRight  = corner === 'top-right'    || corner === 'bottom-right';
-    const isBottom = corner === 'bottom-right' || corner === 'bottom-left';
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didMove.current = true;
 
-    setDrag({
-      x: d.ox + (isRight  ? -dx : dx),
-      y: d.oy + (isBottom ? -dy : dy),
+    const rect = containerEl?.getBoundingClientRect() ?? { width: 320, height: 568 };
+    setPos({
+      x: clamp(dragStart.current.px + dx, margin, rect.width  - pipW - margin),
+      y: clamp(dragStart.current.py + dy, margin, rect.height - pipH - margin),
     });
-  }, [isDragging, corner]);
+  }, [isDragging, pipW, pipH, margin, clamp]);
 
-  const onPointerUp = useCallback((e, containerEl) => {
+  const onPointerUp = useCallback((e) => {
     if (!isDragging) return;
     setIsDragging(false);
+  }, [isDragging]);
 
-    const rect = containerEl?.getBoundingClientRect();
-    if (!rect) { setDrag({ x: 0, y: 0 }); return; }
-
-    // Current PIP centre in container-relative coords
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-
-    // Pick nearest corner
-    const goLeft   = cx < rect.width  / 2;
-    const goTop    = cy < rect.height / 2;
-    const newCorner =
-      goTop  && !goLeft ? 'top-right'    :
-      goTop  &&  goLeft ? 'top-left'     :
-      !goTop && !goLeft ? 'bottom-right' :
-                          'bottom-left';
-
-    setCorner(newCorner);
-
-    // Animate the drag offset back to zero (snapping illusion)
-    controls.start({ x: 0, y: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } });
-    setDrag({ x: 0, y: 0 });
-  }, [isDragging, controls]);
-
-  return { corner, drag, isDragging, anchorStyle, controls, onPointerDown, onPointerMove, onPointerUp };
+  return { pos, resolvePos, isDragging, didMove, onPointerDown, onPointerMove, onPointerUp };
 }
 
 const CallLayout = memo(({
@@ -123,15 +99,14 @@ const CallLayout = memo(({
 
   const [swapped, setSwapped] = useState(false);
 
-  // PIP dimensions (responsive)
-  const PIP_W = 'clamp(88px, 22vw, 118px)';
-  const PIP_H = 'clamp(124px, 30vw, 166px)';
+  // PIP pixel dimensions (used for clamping)
+  const PIP_W = 118;
+  const PIP_H = 166;
 
   const {
-    corner, drag, isDragging,
-    anchorStyle, controls,
+    pos, resolvePos, isDragging, didMove,
     onPointerDown, onPointerMove, onPointerUp,
-  } = useCornerSnap({ pipW: 118, pipH: 166 });
+  } = useFreeDrag({ pipW: PIP_W, pipH: PIP_H });
 
   const remoteMap     = useMemo(() => toMap(remoteStreams), [remoteStreams]);
   const remoteEntries = useMemo(() => Array.from(remoteMap.entries()), [remoteMap]);
@@ -229,7 +204,9 @@ const CallLayout = memo(({
       );
     }
 
-    // Mobile portrait: remote full-screen + corner-snapping self PIP
+    // Mobile portrait: remote full-screen + freely draggable self PIP
+    const pipPosition = resolvePos(containerRef.current);
+
     return (
       <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-black">
         {/* Remote fills entire screen */}
@@ -244,51 +221,48 @@ const CallLayout = memo(({
         <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
 
-        {/* Self PIP — corner-snapping, draggable */}
-        <div
+        {/* Self PIP — freely draggable anywhere on screen */}
+        <motion.div
           style={{
-            ...anchorStyle(corner),
+            position:   'absolute',
+            left:       pipPosition.x,
+            top:        pipPosition.y,
+            width:      PIP_W,
+            height:     PIP_H,
+            borderRadius: 16,
+            border:     '2px solid rgba(255,255,255,0.22)',
+            boxShadow:  '0 4px 24px rgba(0,0,0,0.65)',
             touchAction: 'none',
-            cursor: isDragging ? 'grabbing' : 'grab',
+            cursor:     isDragging ? 'grabbing' : 'grab',
             userSelect: 'none',
+            zIndex:     30,
+            overflow:   'hidden',
           }}
-          onPointerDown={onPointerDown}
-          onPointerMove={(e) => { onPointerMove(e); onControlsReveal?.(); }}
-          onPointerUp={(e) => onPointerUp(e, containerRef.current)}
+          whileTap={{ scale: 0.96 }}
+          onPointerDown={(e) => {
+            onPointerDown(e, containerRef.current);
+            onControlsReveal?.();
+          }}
+          onPointerMove={(e) => {
+            onPointerMove(e, containerRef.current);
+            onControlsReveal?.();
+          }}
+          onPointerUp={(e) => {
+            onPointerUp(e);
+          }}
+          onClick={() => {
+            if (!didMove.current) setSwapped(v => !v);
+          }}
         >
-          {/* Animated wrapper snaps back to x:0, y:0 at corner anchor */}
-          <motion.div
-            animate={controls}
-            whileTap={{ scale: 0.96 }}
-            onClick={() => !isDragging && setSwapped(v => !v)}
-            className="overflow-hidden"
-            style={{
-              width:        PIP_W,
-              height:       PIP_H,
-              borderRadius: 16,
-              border:       '2px solid rgba(255,255,255,0.22)',
-              boxShadow:    '0 4px 24px rgba(0,0,0,0.65)',
-              x: drag.x,
-              y: drag.y,
-            }}
-          >
-            <VideoTile
-              stream={pipStream} username={pipUsername}
-              isMuted={pipIsLocal ? isMuted : false}
-              isVideoOff={pipIsLocal ? isVideoOff : false}
-              isLocal={pipIsLocal} isFloating
-              isActive={activeSpeaker === pipId}
-              className="w-full h-full rounded-none"
-            />
-          </motion.div>
-
-          {/* Corner hint label */}
-          {!isDragging && (
-            <p className="text-center text-white/25 text-[9px] mt-1 tracking-wide select-none">
-              tap to swap
-            </p>
-          )}
-        </div>
+          <VideoTile
+            stream={pipStream} username={pipUsername}
+            isMuted={pipIsLocal ? isMuted : false}
+            isVideoOff={pipIsLocal ? isVideoOff : false}
+            isLocal={pipIsLocal} isFloating
+            isActive={activeSpeaker === pipId}
+            className="w-full h-full rounded-none"
+          />
+        </motion.div>
       </div>
     );
   }
