@@ -21,6 +21,7 @@ import IncomingAudioCall from './components/AudioCall/IncomingAudioCall';
 import AudioCallUI       from './components/AudioCall/AudioCallUI';
 import IncomingCall      from './components/Dashboard/IncomingCall';
 import OutgoingCall      from './components/Dashboard/OutgoingCall';
+import PrivacyPolicy from './components/Common/PrivacyPolicy';
 
 // ─── SoundEngine ──────────────────────────────────────────────────────────────
 import { SoundEngine }       from './utils/SoundEngine';
@@ -624,6 +625,7 @@ function App() {
                   {/* ─── Public ─────────────────────────────────────────── */}
                   <Route path="/login"    element={<Login />} />
                   <Route path="/register" element={<Register />} />
+                    <Route path="/privacy-policy" element={<PrivacyPolicy />} />  {/* ← ADD THIS */}
 
                   {/* ─── App ────────────────────────────────────────────── */}
                   <Route path="/dashboard/*" element={

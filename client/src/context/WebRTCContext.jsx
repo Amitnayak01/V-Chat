@@ -265,9 +265,7 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
         pendingCandidates.current.delete(fromUserId);
         removeRemoteStream(fromUserId);
 
-      } else if (existingPc.signalingState === 'have-local-offer') {
-        // Glare resolution: both peers tried to offer simultaneously.
-        // Smaller userId backs off and accepts the remote offer instead.
+    } else if (existingPc.signalingState === 'have-local-offer') {
         if (myUserIdRef.current < fromUserId) {
           console.log('[WebRTC] Glare — backing off, accepting remote offer');
           existingPc.close();
@@ -276,6 +274,9 @@ const handleOffer = useCallback(async (fromUserId, roomId, offer) => {
           console.log('[WebRTC] Glare — keeping our offer, ignoring remote');
           return;
         }
+      } else {
+        console.log('[WebRTC] handleOffer: active PC exists for', fromUserId, '— ignoring');
+        return;
       }
     }
 

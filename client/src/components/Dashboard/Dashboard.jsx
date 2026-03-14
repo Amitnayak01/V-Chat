@@ -17,6 +17,7 @@ import CallHistory    from './CallHistory';
 import Chat           from './Chat';
 import Profile        from './Profile';
 import Settings       from './Settings';
+import SoundSettings  from './SoundSettings';
 import SupportChat    from './SupportChat';  
 
 import { useAuth }            from '../../context/AuthContext';
@@ -36,6 +37,7 @@ const VIEW_TO_PATH = {
   contacts:          '/dashboard/contacts',
   profile:           '/dashboard/profile',
   settings:          '/dashboard/settings',
+  'sound-settings':  '/dashboard/sound-settings',  // ← ADD THIS LINE
   support:           '/dashboard/support',    // ← ADD
 
 
@@ -570,6 +572,8 @@ window.dispatchEvent(new CustomEvent('outgoing-call-started', {
         return <Profile />;
       case 'settings':
         return <Settings />;
+         case 'sound-settings':          // ← ADD THIS CASE
+        return <SoundSettings />; 
          case 'support':                          // ← ADD
         return <SupportChat />;                // ← ADD
       default:

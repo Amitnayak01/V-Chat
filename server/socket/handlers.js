@@ -19,7 +19,7 @@ const roomHandsRaised    = new Map();
 //    Persisted in memory so late-joiners and reconnectors receive the full state.
 const roomMuteState      = new Map();
 
-const GRACE_MS = 8000;
+const GRACE_MS = 15000;
 
 // ─── Mute state helpers ───────────────────────────────────────────────────────
 
@@ -436,9 +436,11 @@ socket.on('video-invite-rejected', ({ inviterId, rejectorName, inviteeId }) => {
     socket.on('stop-typing', ({ roomId })           => socket.to(roomId).emit('user-stop-typing'));
 
     // ── Screen share ───────────────────────────────────────────────────────
-    socket.on('user-screen-sharing', ({ roomId, userId, username }) => {
-      socket.to(roomId).emit('user-screen-sharing', { userId: userId || socket.userId, username });
-    });
+  socket.on('user-screen-sharing', ({ roomId, userId, username, surface }) => {
+  socket.to(roomId).emit('user-screen-sharing', { userId: userId || socket.userId, username, surface });
+});
+
+
     socket.on('user-stopped-screen-sharing', ({ roomId, userId }) => {
       socket.to(roomId).emit('user-stopped-screen-sharing', { userId: userId || socket.userId });
     });

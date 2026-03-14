@@ -19,8 +19,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { X, Volume2, VolumeX, Bell, Video, MessageCircle,
          Play, Square, Smartphone, RotateCcw, Check, Music } from 'lucide-react';
-import { useSoundSettings }   from './useSoundSettings';
-import { SoundEngine, RINGTONE_OPTIONS, MESSAGE_TONE_OPTIONS } from './SoundEngine';
+import { useSoundSettings }   from '../hooks/useSoundSettings';
+import { SoundEngine, RINGTONE_OPTIONS, MESSAGE_TONE_OPTIONS } from '../utils/SoundEngine';
 
 // ─── Shared design tokens ─────────────────────────────────────────────────────
 const T = {

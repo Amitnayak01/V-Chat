@@ -398,13 +398,17 @@ emit('get-online-users', { roomId });
         pushEvent('user-reconnected', { username });
         toast(`${username} reconnected`, { icon: '🔄' });
       },
-
-
-      'room-rejoin-ack': ({ roomId: ack, members }) => {
-        if (ack !== roomId) return;
-        setIsReconnecting(false);
-        setParticipants(members);
-      },
+'room-rejoin-ack': ({ roomId: ack, members }) => {
+  if (ack !== roomId) return;
+  setIsReconnecting(false);
+  setParticipants(members);
+  const others = members.filter(m => (m.userId ?? m) !== user._id);
+  others.forEach(m => {
+    const uid = m.userId ?? m;
+    setTimeout(() => createOffer(uid), 400);
+  });
+},
+   
 
       // WebRTC signalling
       'webrtc-offer':         ({ offer, from })     => handleOffer(from, roomId, offer),
@@ -536,9 +540,10 @@ emit('get-online-users', { roomId });
   });
 },
 
-'online-users-list': ({ userIds = [] }) => {
-  setOnlineUserIds(new Set(userIds));
+'online-users-list': ({ userIds, users }) => {
+  setOnlineUserIds(new Set(userIds ?? users ?? []));
 },
+
 
       'mute-error': ({ message }) => {
         toast.error(message ?? 'Mute action not permitted');
@@ -681,44 +686,44 @@ const handleSwitchCamera = useCallback(async () => {
       const curIdx  = videoInputs.findIndex(d => d.deviceId === curId);
       const next    = videoInputs[(curIdx + 1) % videoInputs.length];
 
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: next.deviceId } },
-        audio: false,
-      });
+      // ── CHANGED: Stop old track FIRST before requesting new camera ──
+      // Old code did getUserMedia first, causing "camera busy" on Android
+      if (current) {
+        localStream.removeTrack(current);
+        current.stop();
+      }
+
+      // ── NEW: Retry loop with delays so hardware can release ──────────
+      // Android cameras need time after stop() before next getUserMedia
+      let newStream = null;
+      let lastErr   = null;
+      const delays  = [200, 400, 800];
+
+      for (let i = 0; i < delays.length; i++) {
+        await new Promise(r => setTimeout(r, delays[i]));
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: next.deviceId } },
+            audio: false,
+          });
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (err.name !== 'NotReadableError') break;
+          console.warn(`[SwitchCamera] retry ${i + 1} after NotReadableError`);
+        }
+      }
+
+      if (!newStream) throw lastErr;
+
       const newTrack = newStream.getVideoTracks()[0];
 
       if (localStream) {
-        const old = localStream.getVideoTracks()[0];
-
-        // ── Step 1: Update the local MediaStream ──────────────────────
-        // Remove old, add new so the stream object has the right track
-        if (old) {
-          localStream.removeTrack(old);
-          old.stop(); // stop BEFORE replacing so camera LED turns off
-        }
         localStream.addTrack(newTrack);
-
-        // ── Step 2: Push new track to all peer connections ─────────────
-        // Without this the remote side keeps receiving the dead track
         await replaceVideoTrack(newTrack);
-
-        // ── Step 3: Fix screen share restore track ─────────────────────
-        // If screen sharing is active, update the saved camera track
-        // so stopping screen share restores THIS new camera, not the old one
         if (origVideoTrackRef.current) {
           origVideoTrackRef.current = newTrack;
         }
-
-        // ── Step 4: Force VideoTile to re-attach the stream ────────────
-        // localStream is the same object reference so React won't
-        // re-fire the VideoTile effect automatically. We force it by
-        // briefly setting localStream to null then back to the stream.
-        // We do this via the WebRTC context's setLocalStream.
-        // The cleanest way without touching context internals is to
-        // fire a track event the VideoTile already listens for.
-        // VideoTile listens to stream.addtrack — which we already fired
-        // above by calling localStream.addTrack(newTrack). ✅
-        // So VideoTile WILL update automatically via its addtrack listener.
       }
 
       toast.success('Camera switched');
@@ -727,13 +732,15 @@ const handleSwitchCamera = useCallback(async () => {
       if (err.name === 'NotAllowedError') {
         toast.error('Camera permission denied');
       } else if (err.name === 'NotReadableError') {
-        toast.error('Camera is busy — try again');
+        // ── CHANGED: clearer message after all retries failed ──
+        toast.error('Camera still busy — wait a moment and try again');
+      } else if (err.name === 'OverconstrainedError') {
+        toast.error('Camera not available on this device');
       } else {
         toast.error('Failed to switch camera');
       }
     }
   }, [localStream, replaceVideoTrack]);
-
   // ── Recording ─────────────────────────────────────────────────────────────
   const handleStartRecording = useCallback(async ({ quality, includeAudio = true } = {}) => {
     try {

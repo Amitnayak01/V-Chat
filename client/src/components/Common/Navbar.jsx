@@ -1,7 +1,6 @@
 import { useAuth }   from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
-import { LogOut, Bell, ChevronDown, Shield, RefreshCw } from 'lucide-react';
-
+import { LogOut, Bell, ChevronDown, Shield, RefreshCw, FileText } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -174,6 +173,17 @@ const Navbar = ({ onNavigateToProfile, notificationCount = 0 }) => {
                     </button>
                   </div>
                 )}
+
+{/* Privacy Policy */}
+<div className="py-1.5 border-b border-slate-100">
+  <button
+    onClick={() => { navigate('/privacy-policy'); setDropdown(false); }}
+    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+  >
+    <FileText className="w-4 h-4 flex-shrink-0" />
+    Privacy Policy
+  </button>
+</div>
 
                 {/* Logout */}
                 <div className="py-1.5">
