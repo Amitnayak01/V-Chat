@@ -231,18 +231,45 @@ const { user }     = useAuth();
   }, [participants]);
 
 // ── Effect 1: Init media ──────────────────────────────────────────────────
-  useEffect(() => {
-    // Always call cleanup first so any stale stream/peer state
-    // from a previous call is fully wiped before we re-init.
-    // This is the key fix for "works first time only" — the
-    // WebRTCProvider never unmounts between calls so we must
-    // manually reset it at the START of every new room mount.
+
+
+useEffect(() => {
+    // If restoring from minimized, streams and peer connections are
+    // already alive — skip cleanup and re-init entirely.
+    if (localStream) {
+      console.log('[VideoRoom] restoring from minimized — skipping cleanup+reinit');
+      return () => {
+        if (isMinimizingRef.current) {
+          isMinimizingRef.current = false;
+          hasJoined.current       = false;
+          otherJoinedRef.current  = false;
+          return;
+        }
+        if (noAnswerTimerRef.current) {
+          clearTimeout(noAnswerTimerRef.current);
+          noAnswerTimerRef.current = null;
+        }
+        if (intentionalLeave.current) {
+          emit('leave-room', { roomId, userId: user._id });
+          clearCurrentRoom();
+          sessionStorage.removeItem('vmeet_calling');
+        }
+        if (screenStreamRef.current) {
+          screenStreamRef.current.getTracks().forEach(t => t.stop());
+          screenStreamRef.current = null;
+        }
+        hasJoined.current      = false;
+        otherJoinedRef.current = false;
+        cleanup();
+      };
+    }
+
+    // Fresh mount — full init as normal
     cleanup();
 
     initializeMedia(user._id).then(result => {
       if (!result.success) toast.error('Could not access camera / microphone');
     });
-
 
 
 
