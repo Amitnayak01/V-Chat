@@ -19,6 +19,11 @@ import Profile        from './Profile';
 import Settings       from './Settings';
 import SoundSettings  from './SoundSettings';
 import SupportChat    from './SupportChat';  
+import AboutVMeet from './AboutVMeet'; 
+import DataStorage from './DataStorage';
+import PrivacySecurity from './PrivacySecurity';
+import Appearance from './Appearance';
+
 
 import { useAuth }            from '../../context/AuthContext';
 import { useSocket }          from '../../context/SocketContext';
@@ -39,7 +44,10 @@ const VIEW_TO_PATH = {
   settings:          '/dashboard/settings',
   'sound-settings':  '/dashboard/sound-settings',  // ← ADD THIS LINE
   support:           '/dashboard/support',    // ← ADD
-
+  'about':           '/dashboard/about',   // ← ADD THIS
+  'data-storage': '/dashboard/data-storage',
+  'privacy-security': '/dashboard/privacy-security',
+  'appearance': '/dashboard/appearance',
 
 };
 
@@ -575,7 +583,15 @@ window.dispatchEvent(new CustomEvent('outgoing-call-started', {
          case 'sound-settings':          // ← ADD THIS CASE
         return <SoundSettings />; 
          case 'support':                          // ← ADD
-        return <SupportChat />;                // ← ADD
+        return <SupportChat />; 
+        case 'about':
+  return <AboutVMeet />; 
+  case 'data-storage':
+  return <DataStorage />;
+  case 'privacy-security':
+  return <PrivacySecurity />;
+  case 'appearance': 
+  return <Appearance />;              // ← ADD
       default:
         return null;
     }

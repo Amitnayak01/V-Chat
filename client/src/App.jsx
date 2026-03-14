@@ -22,6 +22,9 @@ import AudioCallUI       from './components/AudioCall/AudioCallUI';
 import IncomingCall      from './components/Dashboard/IncomingCall';
 import OutgoingCall      from './components/Dashboard/OutgoingCall';
 import PrivacyPolicy from './components/Common/PrivacyPolicy';
+import ChatMediaPage from './components/Dashboard/Chat/ChatMediaPage';
+
+
 
 // ─── SoundEngine ──────────────────────────────────────────────────────────────
 import { SoundEngine }       from './utils/SoundEngine';
@@ -626,6 +629,7 @@ function App() {
                   <Route path="/login"    element={<Login />} />
                   <Route path="/register" element={<Register />} />
                     <Route path="/privacy-policy" element={<PrivacyPolicy />} />  {/* ← ADD THIS */}
+                   <Route path="/chat-media/:chatId" element={<ChatMediaPage />} />
 
                   {/* ─── App ────────────────────────────────────────────── */}
                   <Route path="/dashboard/*" element={

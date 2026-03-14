@@ -116,16 +116,16 @@ export default function Settings() {
           {/* ── Account ── */}
           <p className="section-label">Account</p>
           <div className="settings-group">
-            <div className="settings-row">
-              <div className="row-icon" style={{ background: '#eef3fe', border: '1px solid #bfdbfe' }}>👤</div>
-              <div className="row-text">
-                <p className="row-title">Profile</p>
-                <p className="row-sub">Name, photo, status message</p>
-              </div>
-              <span className="row-arrow">›</span>
-            </div>
-            <div className="settings-row">
-              <div className="row-icon" style={{ background: '#f3efff', border: '1px solid #ddd6fe' }}>🛡️</div>
+       
+    <div className="settings-row" onClick={() => navigate('/dashboard/profile')}>
+  <div className="row-icon" style={{ background: '#eef3fe', border: '1px solid #bfdbfe' }}>👤</div>
+  <div className="row-text">
+    <p className="row-title">Profile</p>
+    <p className="row-sub">Name, photo, status message</p>
+  </div>
+  <span className="row-arrow">›</span>
+</div>
+<div className="settings-row" onClick={() => navigate('/dashboard/privacy-security')}>              <div className="row-icon" style={{ background: '#f3efff', border: '1px solid #ddd6fe' }}>🛡️</div>
               <div className="row-text">
                 <p className="row-title">Privacy &amp; Security</p>
                 <p className="row-sub">Blocked contacts, two-factor auth</p>
@@ -158,7 +158,7 @@ export default function Settings() {
 </div>
 
 
-            <div className="settings-row">
+            <div className="settings-row"onClick={() => navigate('/dashboard/chats')}>
               <div className="row-icon" style={{ background: '#fef9ec', border: '1px solid #fde68a' }}>🔔</div>
               <div className="row-text">
                 <p className="row-title">Notifications</p>
@@ -167,8 +167,7 @@ export default function Settings() {
               <span className="row-arrow">›</span>
             </div>
 
-            <div className="settings-row">
-              <div className="row-icon" style={{ background: '#fdf4ff', border: '1px solid #f0abfc' }}>🎨</div>
+<div className="settings-row" onClick={() => navigate('/dashboard/appearance')}>              <div className="row-icon" style={{ background: '#fdf4ff', border: '1px solid #f0abfc' }}>🎨</div>
               <div className="row-text">
                 <p className="row-title">Appearance</p>
                 <p className="row-sub">Theme, font size, layout</p>
@@ -181,8 +180,7 @@ export default function Settings() {
           {/* ── Network ── */}
           <p className="section-label">Network</p>
           <div className="settings-group">
-            <div className="settings-row">
-              <div className="row-icon" style={{ background: '#eef3fe', border: '1px solid #bfdbfe' }}>📶</div>
+<div className="settings-row" onClick={() => navigate('/dashboard/data-storage')}>              <div className="row-icon" style={{ background: '#eef3fe', border: '1px solid #bfdbfe' }}>📶</div>
               <div className="row-text">
                 <p className="row-title">Data &amp; Storage</p>
                 <p className="row-sub">Auto-download, media quality</p>
@@ -194,8 +192,7 @@ export default function Settings() {
           {/* ── About ── */}
           <p className="section-label">About</p>
           <div className="settings-group">
-            <div className="settings-row">
-              <div className="row-icon" style={{ background: '#f9fafb', border: '1px solid #e8ecf2' }}>ℹ️</div>
+<div className="settings-row" onClick={() => navigate('/dashboard/about')}>              <div className="row-icon" style={{ background: '#f9fafb', border: '1px solid #e8ecf2' }}>ℹ️</div>
               <div className="row-text">
                 <p className="row-title">About V-Meet</p>
                 <p className="row-sub">Version, licenses, terms</p>

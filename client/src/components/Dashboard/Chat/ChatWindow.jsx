@@ -1108,25 +1108,33 @@ const handleArchiveConversation = useCallback(async () => {
               <button onClick={onBack} className="md:hidden w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center">
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <div className="relative">
-                {conversation.user?.avatar
-                  ? <img src={conversation.user.avatar} alt="" className="w-10 h-10 rounded-full object-cover" />
-                  : <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold">{conversation.user?.username?.[0]?.toUpperCase()}</div>
-                }
-                {isOnline && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />}
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-                  {conversation.user?.username}
-                  {isPinned && <Pin className="w-3 h-3 text-primary-500" />}
-                </h3>
-                <p className={`text-xs ${typingUsers.size > 0 ? 'text-primary-600 font-medium' : 'text-slate-500'}`}>
-                  {typingUsers.size > 0 ? `${conversation.user?.username} is typing...`
-                    : isOnline ? 'Online'
-                    : lastSeen ? `Last seen ${formatDistanceToNow(new Date(lastSeen), { addSuffix: true })}`
-                    : 'Offline'}
-                </p>
-              </div>
+
+<div
+  className="flex items-center gap-3 cursor-pointer group"
+  onClick={() => navigate(`/chat-media/${conversation.conversationId}`)}
+  title="View shared media"
+>
+  <div className="relative">
+    {conversation.user?.avatar
+      ? <img src={conversation.user.avatar} alt="" className="w-10 h-10 rounded-full object-cover group-hover:opacity-90 transition-opacity" />
+      : <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold group-hover:opacity-90 transition-opacity">{conversation.user?.username?.[0]?.toUpperCase()}</div>
+    }
+    {isOnline && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />}
+  </div>
+  <div>
+    <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-1.5 group-hover:text-primary-600 transition-colors">
+      {conversation.user?.username}
+      {isPinned && <Pin className="w-3 h-3 text-primary-500" />}
+    </h3>
+    <p className={`text-xs ${typingUsers.size > 0 ? 'text-primary-600 font-medium' : 'text-slate-500'}`}>
+      {typingUsers.size > 0 ? `${conversation.user?.username} is typing...`
+        : isOnline ? 'Online'
+        : lastSeen ? `Last seen ${formatDistanceToNow(new Date(lastSeen), { addSuffix: true })}`
+        : 'Offline'}
+    </p>
+  </div>
+</div>
+          
             </div>
             <div className="flex items-center gap-1">
               <button onClick={() => { setShowSearch((s) => !s); setSearchQuery(''); setSearchResults([]); }} className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600">

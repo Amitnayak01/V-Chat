@@ -160,6 +160,18 @@ const { user }     = useAuth();
     });
   }, []);
 
+
+  // ── Mark page refresh so Effect 1 knows not to leave the room ────────────
+useEffect(() => {
+  const markRefresh = () => {
+    sessionStorage.setItem('vmeet_restoring', 'true');
+    sessionStorage.setItem('vmeet_refresh_room', roomId);
+    // intentionalLeave stays false → leave-room is NOT emitted on cleanup
+  };
+  window.addEventListener('beforeunload', markRefresh);
+  return () => window.removeEventListener('beforeunload', markRefresh);
+}, [roomId]);
+
   // ── Auto-hide controls (call mode) ───────────────────────────────────────
   const resetHideTimer = useCallback(() => {
     if (mode !== 'call') return;
@@ -182,12 +194,17 @@ const { user }     = useAuth();
     participantsRef.current = participants;
   }, [participants]);
 
-// ── Effect 1: Init media ──────────────────────────────────────────────────
+  // ── Effect 1: Init media ──────────────────────────────────────────────────
 useEffect(() => {
-  const isRestoring = sessionStorage.getItem('vmeet_restoring') === 'true';
+  const storedRestoring   = sessionStorage.getItem('vmeet_restoring') === 'true';
+  const storedRefreshRoom = sessionStorage.getItem('vmeet_refresh_room');
   sessionStorage.removeItem('vmeet_restoring');
+  sessionStorage.removeItem('vmeet_refresh_room');
 
-  if (isRestoring) {
+  const isMinimizeRestore = storedRestoring && !storedRefreshRoom;
+  const isRefreshRestore  = storedRestoring && storedRefreshRoom === roomId;
+
+  if (isMinimizeRestore) {
     // Peer connections + streams are still alive in WebRTCContext.
     // Just restore the refs and re-fetch participants without renegotiating.
     hasJoined.current      = true;   // blocks Effect 2 from re-emitting join-room
@@ -196,6 +213,35 @@ useEffect(() => {
     return;
   }
 
+  if (isRefreshRestore) {
+    // Page was refreshed — JS torn down but server kept our room slot alive.
+    // Re-acquire media tracks (they die on refresh), then Effect 2 will
+    // re-emit join-room once localStream is ready.
+    // intentionalLeave stays false → leave-room is never emitted.
+    otherJoinedRef.current = true; // prevents the 45s no-answer navigation
+    initializeMedia(user._id).then(result => {
+      if (!result.success) toast.error('Could not access camera / microphone');
+    });
+    return () => {
+      if (noAnswerTimerRef.current) {
+        clearTimeout(noAnswerTimerRef.current);
+        noAnswerTimerRef.current = null;
+      }
+      if (intentionalLeave.current) {
+        emit('leave-room', { roomId, userId: user._id });
+        clearCurrentRoom();
+      }
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(t => t.stop());
+        screenStreamRef.current = null;
+      }
+      hasJoined.current      = false;
+      otherJoinedRef.current = false;
+      cleanup();
+    };
+  }
+
+  // ── Fresh join (original path — completely unchanged below) ───────────────
   cleanup();
   initializeMedia(user._id).then(result => {
     if (!result.success) toast.error('Could not access camera / microphone');
@@ -391,6 +437,12 @@ emit('get-online-users', { roomId });
       },
 'room-rejoin-ack': ({ roomId: ack, members }) => {
   if (ack !== roomId) return;
+  // Cancel the no-answer timer — we know we're back in a live room
+  if (noAnswerTimerRef.current) {
+    clearTimeout(noAnswerTimerRef.current);
+    noAnswerTimerRef.current = null;
+  }
+  otherJoinedRef.current = true; // prevents Effect 5 from navigating away
   setIsReconnecting(false);
   setParticipants(members);
   const others = members.filter(m => (m.userId ?? m) !== user._id);

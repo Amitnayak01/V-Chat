@@ -37,22 +37,26 @@ const Navbar = ({ onNavigateToProfile, notificationCount = 0 }) => {
     >
       <div className="h-full flex items-center justify-between px-4 sm:px-6">
 
-        {/* ── Logo ── */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <img
-            src={AppLogo}
-            alt="App Logo"
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain flex-shrink-0"
-          />
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-slate-900 leading-tight tracking-tight">
-              V-Meet
-            </h1>
-            <p className="text-[10px] text-slate-400 hidden sm:block tracking-wide uppercase">
-              Video Collaboration Platform
-            </p>
-          </div>
-        </div>
+{/* ── Logo ── */}
+<div
+  className="flex items-center gap-2 sm:gap-3 min-w-0 cursor-pointer"
+  onClick={() => navigate('/dashboard')}
+  title="Go to Dashboard"
+>
+  <img
+    src={AppLogo}
+    alt="App Logo"
+    className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain flex-shrink-0"
+  />
+  <div className="min-w-0">
+    <h1 className="text-base sm:text-xl font-bold text-slate-900 leading-tight tracking-tight">
+      V-Meet
+    </h1>
+    <p className="text-[10px] text-slate-400 hidden sm:block tracking-wide uppercase">
+      Video Collaboration Platform
+    </p>
+  </div>
+</div>
 
         {/* ── Right controls ── */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">

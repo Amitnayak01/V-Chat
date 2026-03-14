@@ -19,7 +19,7 @@ const roomHandsRaised    = new Map();
 //    Persisted in memory so late-joiners and reconnectors receive the full state.
 const roomMuteState      = new Map();
 
-const GRACE_MS = 15000;
+const GRACE_MS = 30000;
 
 // ─── Mute state helpers ───────────────────────────────────────────────────────
 
