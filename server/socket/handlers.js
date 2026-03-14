@@ -235,13 +235,22 @@ export const handleSocketConnection = (io) => {
 });
 
 
-// ✅ REPLACE WITH
+
 socket.on('get-online-users', () => {
   socket.emit('online-users-list', {
-    users: Array.from(userSockets.keys()),  // ← matches what client expects
+    users: Array.from(userSockets.keys()),
   });
 });
 
+// ← ADD THIS RIGHT HERE
+socket.on('get-room-participants', ({ roomId }) => {
+  const members = activeRooms.get(roomId);
+  if (!members) return;
+  const memberList = Array.from(members.entries()).map(
+    ([uid, info]) => ({ userId: uid, ...info })
+  );
+  socket.emit('room-participants', { participants: memberList, roomId });
+});
 
 socket.on('cancel-invite-to-video-room', ({ roomId, inviteeId, inviterId }) => {
   const inviteeSocketId = userSockets.get(inviteeId);

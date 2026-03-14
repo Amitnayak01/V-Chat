@@ -183,67 +183,57 @@ const { user }     = useAuth();
   }, [participants]);
 
 // ── Effect 1: Init media ──────────────────────────────────────────────────
- useEffect(() => {
-  const isRestoring = sessionStorage.getItem('vmeet_minimized') === 'true';
-  sessionStorage.removeItem('vmeet_minimized');
+useEffect(() => {
+  const isRestoring = sessionStorage.getItem('vmeet_restoring') === 'true';
+  sessionStorage.removeItem('vmeet_restoring');
 
-  if (!isRestoring) {
-    cleanup();
-    initializeMedia(user._id).then(result => {
-      if (!result.success) toast.error('Could not access camera / microphone');
-    });
+  if (isRestoring) {
+    // Peer connections + streams are still alive in WebRTCContext.
+    // Just restore the refs and re-fetch participants without renegotiating.
+    hasJoined.current      = true;   // blocks Effect 2 from re-emitting join-room
+    otherJoinedRef.current = true;   // blocks Effect 5 from navigating away
+    emit('get-room-participants', { roomId }); // server returns room-participants event
+    return;
   }
-  // If restoring: streams + peer connections are still alive in WebRTCContext.
-  // Effect 2 will re-emit join-room (hasJoined.current = false on remount)
-  // and the server will re-sync participants without tearing down peers.
 
+  cleanup();
+  initializeMedia(user._id).then(result => {
+    if (!result.success) toast.error('Could not access camera / microphone');
+  });
 
+  return () => {
+    if (isMinimizingRef.current) {
+      isMinimizingRef.current = false;
+      return; // skip teardown — sessionStorage flag handles the remount side
+    }
 
- return () => {
-      // ── Skip teardown when minimizing so streams stay alive ──
-      if (isMinimizingRef.current) {
-        isMinimizingRef.current = false;
-        hasJoined.current       = false;
-        otherJoinedRef.current  = false;
-        return;
+    if (noAnswerTimerRef.current) {
+      clearTimeout(noAnswerTimerRef.current);
+      noAnswerTimerRef.current = null;
+    }
+    if (intentionalLeave.current) {
+      emit('leave-room', { roomId, userId: user._id });
+      clearCurrentRoom();
+      if (!otherJoinedRef.current) {
+        try {
+          const calling = sessionStorage.getItem('vmeet_calling');
+          if (calling) {
+            const { receiverId } = JSON.parse(calling);
+            emit('cancel-call', { receiverId, callerId: user._id });
+          }
+        } catch (_) {}
       }
-
-      if (noAnswerTimerRef.current) {
-        clearTimeout(noAnswerTimerRef.current);
-        noAnswerTimerRef.current = null;
-      }
-      if (intentionalLeave.current) {
-        emit('leave-room', { roomId, userId: user._id });
-        clearCurrentRoom();
-
-        // If caller leaves before receiver accepted, notify receiver
-        // so their ringing UI dismisses and ringtone stops
-        if (!otherJoinedRef.current) {
-          try {
-            const calling = sessionStorage.getItem('vmeet_calling');
-            if (calling) {
-              const { receiverId } = JSON.parse(calling);
-              emit('cancel-call', {
-                receiverId,
-                callerId: user._id,
-              });
-            }
-          } catch (_) {}
-        }
-        sessionStorage.removeItem('vmeet_calling');
-      }
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(t => t.stop());
-        screenStreamRef.current = null;
-      }
-      hasJoined.current = false;
-      otherJoinedRef.current = false;
-      cleanup();
-    };
-
-
-
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      sessionStorage.removeItem('vmeet_calling');
+    }
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
+    }
+    hasJoined.current      = false;
+    otherJoinedRef.current = false;
+    cleanup();
+  };
+}, []); // eslint-disable-line react-hooks/exhaustive-deps
  
   // ── Effect 2: Join room (once media + socket are ready) ───────────────────
   useEffect(() => {
@@ -949,7 +939,7 @@ const handleEndCall = useCallback(() => {
 const handleMinimize = useCallback(() => {
   if (isRecording) { toast.error('Stop recording before minimizing'); return; }
   isMinimizingRef.current = true;
-    sessionStorage.setItem('vmeet_minimized', 'true');   // ← ADD THIS LINE
+  sessionStorage.setItem('vmeet_restoring', 'true'); // ← ADD THIS
   minimizeCall({
     roomId,
     userId:        user._id,
