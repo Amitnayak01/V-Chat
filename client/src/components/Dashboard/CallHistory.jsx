@@ -28,41 +28,24 @@ import {
   getCallHistory, deleteCallRecord, clearCallHistory,
   fmtDuration, fmtTimestamp,
 } from '../../utils/callHistoryStore';
+import { useThemeTokens } from '../../hooks/useThemeTokens';
+import { getCHStyles }    from '../../utils/darkModeStyles';
 
-/* ─── Design tokens ──────────────────────────────────────────────────────── */
-const T = {
-  bg:       '#f0f4f8',
-  card:     '#ffffff',
-  dark:     '#0a1220',
-  teal:     '#0fe6c0',
-  tealBg:   'rgba(15,230,192,0.10)',
-  tealBd:   'rgba(15,230,192,0.25)',
-  red:      '#ef4444',
-  gold:     '#f0a83e',
-  blue:     '#3b82f6',
-  violet:   '#8b5cf6',
-  violetBg: 'rgba(139,92,246,0.12)',
-  violetBd: 'rgba(139,92,246,0.28)',
-  slate1:   '#1e293b',
-  slate2:   '#475569',
-  slate3:   '#94a3b8',
-  slate4:   '#e2e8f0',
-  slate5:   '#f8fafc',
-};
+
 
 /* ─── Call type meta (group added) ──────────────────────────────────────── */
-const CALL_META = {
-  incoming: { Icon: PhoneIncoming, color: T.teal,   label: 'Incoming', bg: T.tealBg              },
-  outgoing: { Icon: PhoneOutgoing, color: T.blue,   label: 'Outgoing', bg: 'rgba(59,130,246,.10)' },
-  missed:   { Icon: PhoneMissed,   color: T.red,    label: 'Missed',   bg: 'rgba(239,68,68,.10)'  },
-  group:    { Icon: Users,         color: T.violet, label: 'Group',    bg: T.violetBg             },
-};
+const getCallMeta = (T) => ({
+  incoming: { Icon: PhoneIncoming, color: T.teal,   label: 'Incoming', bg: T.tealBg               },
+  outgoing: { Icon: PhoneOutgoing, color: T.blue,   label: 'Outgoing', bg: 'rgba(59,130,246,.10)'  },
+  missed:   { Icon: PhoneMissed,   color: T.red,    label: 'Missed',   bg: 'rgba(239,68,68,.10)'   },
+  group:    { Icon: Users,         color: T.violet, label: 'Group',    bg: T.violetBg              },
+});
 
-const STATUS_META = {
+const getStatusMeta = (T) => ({
   completed: { color: T.teal, label: 'Completed' },
   rejected:  { color: T.red,  label: 'Rejected'  },
   missed:    { color: T.red,  label: 'Missed'     },
-};
+});
 
 /* ─── Filter tabs (group added) ─────────────────────────────────────────── */
 const FILTERS = [
@@ -77,31 +60,8 @@ const FILTERS = [
 const isGroupRecord = (r) => r.isGroup || r.type === 'group';
 
 /* ─── Global styles ──────────────────────────────────────────────────────── */
-const Styles = () => (
-  <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
-    .ch-root * { box-sizing: border-box; font-family: 'DM Sans', sans-serif; }
-    .ch-mono   { font-family: 'JetBrains Mono', monospace !important; }
-    @keyframes ch-in    { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
-    @keyframes ch-fade  { from{opacity:0} to{opacity:1} }
-    @keyframes ch-slide { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
-    @keyframes ch-pop   { from{opacity:0;transform:scale(.94)} to{opacity:1;transform:scale(1)} }
-    @keyframes ch-expand{ from{opacity:0;transform:scaleY(.88)} to{opacity:1;transform:scaleY(1)} }
-    .ch-row { animation: ch-in .22s ease both; }
-    .ch-row:hover .ch-actions { opacity: 1 !important; }
-    .ch-row:hover { background: #f1f5f9 !important; }
-    .ch-btn-ghost { transition: all .15s; }
-    .ch-btn-ghost:hover { transform: translateY(-1px); }
-    .ch-btn-ghost:active { transform: scale(.92); }
-    .ch-tab { transition: all .18s; }
-    .ch-row-action { transition: all .12s; }
-    .ch-row-action:hover { transform: scale(1.08); }
-    .ch-row-action:active { transform: scale(.92); }
-    .ch-participant-chip:hover { background: #e2e8f0 !important; }
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
-  `}</style>
+const Styles = ({ isDark }) => (
+  <style>{getCHStyles(isDark)}</style>
 );
 
 /* ─── MiniAvatar (reused in ParticipantStrip chips) ─────────────────────── */
@@ -135,7 +95,7 @@ const MiniAvatar = ({ src, name, size = 22, border = '#fff' }) => (
  * clips everything with borderRadius+overflow:hidden.  A 1.5px white
  * gap between tiles acts as a natural divider — no separate borders needed.
  */
-const GroupAvatar = ({ participants = [], size = 46 }) => {
+const GroupAvatar = ({ participants = [], size = 46, T }) => {
   const GAP  = 1.5;                         // px gap between tiles (white divider)
   const half = (size - GAP) / 2;
 
@@ -257,7 +217,8 @@ const GroupAvatar = ({ participants = [], size = 46 }) => {
 };
 
 /* ─── Standard 1:1 Avatar ────────────────────────────────────────────────── */
-const Avatar = ({ src, name, size = 46, type }) => {
+const Avatar = ({ src, name, size = 46, type, T }) => {
+  const CALL_META = getCallMeta(T);
   const meta = CALL_META[type] || CALL_META.incoming;
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
@@ -291,7 +252,7 @@ const Avatar = ({ src, name, size = 46, type }) => {
 };
 
 /* ─── ParticipantStrip — expandable list of who was in a group call ──────── */
-const ParticipantStrip = ({ participants, expanded }) => {
+const ParticipantStrip = ({ participants, expanded, T }) => {
   if (!participants?.length || !expanded) return null;
   return (
     <div style={{
@@ -320,7 +281,7 @@ const ParticipantStrip = ({ participants, expanded }) => {
 };
 
 /* ─── Empty state ────────────────────────────────────────────────────────── */
-const Empty = ({ filter, search }) => (
+const Empty = ({ filter, search, T }) => (
   <div style={{
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', padding: '60px 24px', gap: 12,
@@ -360,7 +321,7 @@ const Empty = ({ filter, search }) => (
 );
 
 /* ─── Confirm dialog ─────────────────────────────────────────────────────── */
-const ConfirmDialog = ({ message, onConfirm, onCancel }) => (
+const ConfirmDialog = ({ message, onConfirm, onCancel, T }) => (
   <div
     style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
     onClick={onCancel}
@@ -369,7 +330,7 @@ const ConfirmDialog = ({ message, onConfirm, onCancel }) => (
     <div
       onClick={e => e.stopPropagation()}
       style={{
-        position: 'relative', zIndex: 1, background: '#fff', borderRadius: 20,
+        position: 'relative', zIndex: 1, background: T.card, borderRadius: 20,
         padding: '24px 24px 20px', maxWidth: 340, width: '100%',
         boxShadow: '0 20px 60px rgba(0,0,0,.18)', animation: 'ch-pop .22s cubic-bezier(.34,1.3,.64,1)',
       }}
@@ -388,7 +349,8 @@ const ConfirmDialog = ({ message, onConfirm, onCancel }) => (
 );
 
 /* ─── CallRow ─────────────────────────────────────────────────────────────── */
-const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
+ const CallRow = ({ record, idx, onDelete, onCallAgain, T }) => {
+
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [menuPos,     setMenuPos]     = useState({ top: 0, left: 0 });
   const [showPeople,  setShowPeople]  = useState(false);
@@ -396,8 +358,10 @@ const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
   const btnRef    = useRef(null);
 
   const isGroup   = isGroupRecord(record);
-  const meta      = CALL_META[isGroup ? 'group' : record.type] || CALL_META.incoming;
-  const sMeta     = STATUS_META[record.status] || STATUS_META.completed;
+const CALL_META = getCallMeta(T);
+const STATUS_META = getStatusMeta(T);
+const meta      = CALL_META[isGroup ? 'group' : record.type] || CALL_META.incoming;
+const sMeta     = STATUS_META[record.status] || STATUS_META.completed;
   const hasParticipants = isGroup && Array.isArray(record.participants) && record.participants.length > 0;
   const participantCount = record.participants?.length ?? 0;
 
@@ -427,20 +391,19 @@ const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
       className="ch-row"
       style={{
         padding: '10px 14px', borderRadius: 14,
-        background: '#fff', position: 'relative',
-        animationDelay: `${idx * 28}ms`,
-        border: isGroup ? `1px solid ${T.violetBd}` : '1px solid transparent',
+       background: T.card, position: 'relative',
+animationDelay: `${idx * 28}ms`,
+border: isGroup ? `1px solid ${T.violetBd}` : `1px solid ${T.slate4}`,
         transition: 'border-color .15s',
       }}
     >
       {/* Main row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
 
-        {/* Avatar */}
-        {isGroup
-          ? <GroupAvatar participants={record.participants ?? []} size={46} />
-          : <Avatar src={record.peerAvatar} name={record.peerName} size={46} type={record.type} />
-        }
+{isGroup
+  ? <GroupAvatar participants={record.participants ?? []} size={46} T={T} />
+  : <Avatar src={record.peerAvatar} name={record.peerName} size={46} type={record.type} T={T} />
+}
 
         {/* Info */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -542,7 +505,7 @@ const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
       </div>
 
       {/* Participant strip (expandable) */}
-      <ParticipantStrip participants={record.participants} expanded={showPeople} />
+      <ParticipantStrip participants={record.participants} expanded={showPeople} T={T} />
 
       {/* ⋮ Dropdown portal */}
       {menuOpen && createPortal(
@@ -550,8 +513,8 @@ const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
           ref={menuRef}
           style={{
             position: 'fixed', top: menuPos.top, left: menuPos.left,
-            background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
-            boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 99999,
+           background: T.card, border: `1px solid ${T.slate4}`, borderRadius: 12,
+boxShadow: '0 8px 24px rgba(0,0,0,.35)', zIndex: 99999,
             minWidth: 150, animation: 'ch-pop .15s ease', overflow: 'hidden',
           }}
         >
@@ -563,7 +526,7 @@ const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
               >
                 <Phone style={{ width: 14, height: 14, color: '#0ab89a' }} /> Call again
               </button>
-              <div style={{ height: 1, background: '#f1f5f9' }} />
+              <div style={{ height: 1, background: T.divider }} />
             </>
           )}
           {hasParticipants && (
@@ -575,7 +538,7 @@ const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
                 <Users style={{ width: 14, height: 14, color: T.violet }} />
                 {showPeople ? 'Hide participants' : 'Show participants'}
               </button>
-              <div style={{ height: 1, background: '#f1f5f9' }} />
+              <div style={{ height: 1, background: T.divider }} />
             </>
           )}
           <button
@@ -595,6 +558,8 @@ const CallRow = ({ record, idx, onDelete, onCallAgain }) => {
    MAIN COMPONENT
 ══════════════════════════════════════════════════════════════════════════ */
 const CallHistory = () => {
+  const T      = useThemeTokens();
+  const isDark = T.bg === '#080e17';
   const { initiateCall, callState } = useAudioCall();
 
   const [records,     setRecords]     = useState(() => getCallHistory());
@@ -660,17 +625,18 @@ const CallHistory = () => {
   /* ── Render ──────────────────────────────────────────────────────────── */
   return (
     <div className="ch-root" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg, minHeight: 0 }}>
-      <Styles />
+      <Styles isDark={isDark} />
       {showConfirm && (
         <ConfirmDialog
           message={confirmMsg}
           onConfirm={confirmCb}
           onCancel={() => setShowConfirm(false)}
+          T={T}
         />
       )}
 
       {/* ── HEADER ─────────────────────────────────────────────────────── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e8edf2', padding: '16px 20px 0', flexShrink: 0 }}>
+      <div style={{ background: T.header, borderBottom: `1px solid ${T.headerBd}`, padding: '16px 20px 0', flexShrink: 0 }}>
 
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -777,8 +743,7 @@ const CallHistory = () => {
                   padding: '7px 12px', borderRadius: '10px 10px 0 0', fontSize: 12,
                   fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
                   background: active ? T.slate1 : 'transparent',
-                  color: active ? '#fff' : T.slate3,
-                  border: 'none',
+                  color: active ? T.tabActiveText : T.tabText,                  border: 'none',
                   borderBottom: active ? `2px solid ${tabColor}` : '2px solid transparent',
                   display: 'flex', alignItems: 'center', gap: 5,
                 }}
@@ -804,17 +769,18 @@ const CallHistory = () => {
       {/* ── CALL LIST ──────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
         {filtered.length === 0
-          ? <Empty filter={filter} search={search} />
+          ? <Empty filter={filter} search={search} T={T} />
           : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {filtered.map((record, idx) => (
-                <CallRow
-                  key={record.id}
-                  record={record}
-                  idx={idx}
-                  onDelete={handleDeleteWithConfirm}
-                  onCallAgain={handleCallAgain}
-                />
+               <CallRow
+  key={record.id}
+  record={record}
+  idx={idx}
+  onDelete={handleDeleteWithConfirm}
+  onCallAgain={handleCallAgain}
+  T={T}
+/>
               ))}
             </div>
           )

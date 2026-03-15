@@ -11,101 +11,65 @@ export default function Settings() {
 
   return (
     <>
-      <style>{`
-        .settings-root {
-          min-height: 100vh;
-          background: #ffffff;
-          padding: clamp(24px, 4vw, 48px) clamp(16px, 4vw, 40px);
-          font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-          color: #0c1120;
-          box-sizing: border-box;
-        }
-        .settings-inner {
-          max-width: 640px;
-          margin: 0 auto;
-          width: 100%;
-        }
-        .settings-title {
-          font-size: clamp(20px, 4vw, 26px);
-          font-weight: 800;
-          color: #0c1120;
-          letter-spacing: -.02em;
-          margin: 0 0 4px;
-        }
-        .settings-subtitle {
-          font-size: 13px;
-          color: #6b7897;
-          margin: 0 0 28px;
-        }
-        .section-label {
-          font-size: 10px;
-          font-weight: 700;
-          color: #9ba8bf;
-          text-transform: uppercase;
-          letter-spacing: .1em;
-          margin: 0 0 8px 2px;
-        }
-        .settings-group {
-          background: #ffffff;
-          border-radius: 16px;
-          border: 1px solid #e8ecf2;
-          overflow: hidden;
-          margin-bottom: 20px;
-          box-shadow: 0 1px 4px rgba(0,0,0,.04);
-        }
-        .settings-row {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          padding: 14px 16px;
-          cursor: pointer;
-          transition: background .15s;
-          border-bottom: 1px solid #f0f3f7;
-        }
-        .settings-row:last-child { border-bottom: none; }
-        .settings-row:hover { background: #f9fafb; }
-        .row-icon {
-          width: 38px;
-          height: 38px;
-          border-radius: 11px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 17px;
-          flex-shrink: 0;
-        }
-        .row-text { flex: 1; min-width: 0; }
-        .row-title {
-          font-size: 13.5px;
-          font-weight: 600;
-          color: #0c1120;
-          margin: 0;
-        }
-        .row-sub {
-          font-size: 11px;
-          color: #9ba8bf;
-          margin: 2px 0 0;
-        }
-        .row-arrow {
-          color: #9ba8bf;
-          font-size: 18px;
-          flex-shrink: 0;
-        }
-        .sound-badge {
-          font-size: 10px;
-          font-weight: 700;
-          color: #0d9f6e;
-          background: #edfaf5;
-          border: 1px solid #bbf0d8;
-          padding: 3px 9px;
-          border-radius: 6px;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        @media (max-width: 400px) {
-          .sound-badge { display: none; }
-        }
-      `}</style>
+  <style>{`
+  .settings-root {
+    min-height: 100vh;
+    background: var(--surface-primary, #ffffff);
+    padding: clamp(24px, 4vw, 48px) clamp(16px, 4vw, 40px);
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    color: var(--text-primary, #0c1120);
+    box-sizing: border-box;
+  }
+  .settings-inner { max-width: 640px; margin: 0 auto; width: 100%; }
+  .settings-title {
+    font-size: clamp(20px, 4vw, 26px); font-weight: 800;
+    color: var(--text-primary, #0c1120);
+    letter-spacing: -.02em; margin: 0 0 4px;
+  }
+  .settings-subtitle {
+    font-size: 13px; color: var(--text-muted, #6b7897); margin: 0 0 28px;
+  }
+  .section-label {
+    font-size: 10px; font-weight: 700;
+    color: var(--text-subtle, #9ba8bf);
+    text-transform: uppercase; letter-spacing: .1em; margin: 0 0 8px 2px;
+  }
+  .settings-group {
+    background: var(--surface-primary, #ffffff);
+    border-radius: 16px;
+    border: 1px solid var(--border-default, #e8ecf2);
+    overflow: hidden; margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  .settings-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; cursor: pointer;
+    transition: background .15s;
+    border-bottom: 1px solid var(--border-hairline, #f0f3f7);
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row:hover { background: var(--surface-hover, #f9fafb); }
+  .row-icon {
+    width: 38px; height: 38px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .row-text { flex: 1; min-width: 0; }
+  .row-title {
+    font-size: 13.5px; font-weight: 600;
+    color: var(--text-primary, #0c1120); margin: 0;
+  }
+  .row-sub {
+    font-size: 11px; color: var(--text-subtle, #9ba8bf); margin: 2px 0 0;
+  }
+  .row-arrow { color: var(--text-subtle, #9ba8bf); font-size: 18px; flex-shrink: 0; }
+  .sound-badge {
+    font-size: 10px; font-weight: 700; color: #0d9f6e;
+    background: #edfaf5; border: 1px solid #bbf0d8;
+    padding: 3px 9px; border-radius: 6px; white-space: nowrap; flex-shrink: 0;
+  }
+  @media (max-width: 400px) { .sound-badge { display: none; } }
+`}</style>
 
       <div className="settings-root">
         <div className="settings-inner">
