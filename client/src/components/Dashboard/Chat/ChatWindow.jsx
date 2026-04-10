@@ -1067,10 +1067,13 @@ const handleArchiveConversation = useCallback(async () => {
      RENDER
   ════════════════════════════════════════════════════════════════════════ */
   return (
+    
+
     <div
-      className="flex flex-col h-full overflow-hidden relative"
-      onClick={() => { if (contextMenu) setContextMenu(null); }}
-    >
+  className="flex flex-col h-full relative"
+  onClick={() => { if (contextMenu) setContextMenu(null); }}
+>
+  
       {/* ═══════════════════════════════════════════════════════════
           HEADER — switches between normal and multi-select variant
       ═══════════════════════════════════════════════════════════ */}

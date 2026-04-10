@@ -61,11 +61,15 @@
    DARK THEME
 ═══════════════════════════════════════════════════════════════ */
 [data-theme="dark"] {
-  --surface-base:        #080e17;
-  --surface-primary:     #0d1526;
-  --surface-secondary:   #111d2e;
-  --surface-tertiary:    #172034;
-  --surface-elevated:    #1c2a3e;
+
+  
+  --surface-base:      #0a0a0a;
+--surface-primary:     #141414;
+--surface-secondary:   #1a1a1a;
+--surface-tertiary:    #212121;
+--surface-elevated:    #2a2a2a;
+
+
   --surface-hover:       rgba(255,255,255,0.05);
 
   --text-primary:        #e8edf5;

@@ -340,7 +340,7 @@ const handleVoiceCall = () => {
      RENDER
   ════════════════════════════════════════════════════════════════════ */
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--surface-base)' }}>
       <style>{`
         @keyframes fadeUp  { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
         @keyframes scaleIn { from { opacity:0; transform:scale(0.93) }     to { opacity:1; transform:scale(1) }      }
@@ -442,28 +442,27 @@ const handleVoiceCall = () => {
                   </button>
 
                   {/* Voice chip — NEW */}
-                  <button
-                    onClick={handleVoiceCall} disabled={voiceCalling}
-                    title="Voice call"
-                    className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-emerald-200 active:scale-95 disabled:opacity-60"
-                  >
-                    {voiceCalling
-                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : <PhoneCall className="w-3.5 h-3.5" />}
-                    <span className="hidden sm:inline">Voice</span>
-                  </button>
-
+<button
+  onClick={handleVoiceCall} disabled={voiceCalling}
+  title="Voice call"
+  className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 text-white text-xs font-bold rounded-xl transition-all active:scale-95 disabled:opacity-60"
+  style={{ background: '#10b981', boxShadow: '0 4px 10px rgba(16,185,129,0.3)' }}
+>
+  {voiceCalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PhoneCall className="w-3.5 h-3.5" />}
+  <span className="hidden sm:inline">Voice</span>
+</button>
                   {/* Video chip */}
-                  <button
-                    onClick={handleCall} disabled={calling}
-                    title="Video call"
-                    className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-200 active:scale-95 disabled:opacity-60"
-                  >
-                    {calling
-                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : <Video className="w-3.5 h-3.5" />}
-                    <span className="hidden sm:inline">Call</span>
-                  </button>
+
+
+<button
+  onClick={handleCall} disabled={calling}
+  title="Video call"
+  className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 text-white text-xs font-bold rounded-xl transition-all active:scale-95 disabled:opacity-60"
+  style={{ background: '#2563eb', boxShadow: '0 4px 10px rgba(37,99,235,0.3)' }}
+>
+  {calling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Video className="w-3.5 h-3.5" />}
+  <span className="hidden sm:inline">Call</span>
+</button>
                 </div>
               )}
             </div>
@@ -669,39 +668,54 @@ const handleVoiceCall = () => {
             FULL-WIDTH ACTION BUTTONS — other user only
             3 cols: Message | Voice Call | Video Call
         ════════════════════════════════════════════════════════ */}
-        {!isOwnProfile && (
-          <div
-            className="anim-fade-up grid grid-cols-3 gap-2 sm:gap-3 pb-2"
-            style={{ animationDelay: '250ms' }}
-          >
-            {/* Message */}
-            <button
-              onClick={handleMessage} disabled={messaging}
-              className="flex flex-col items-center justify-center gap-1.5 py-3.5 sm:py-4 rounded-2xl bg-white border border-slate-200 hover:border-violet-300 hover:bg-violet-50 text-slate-700 hover:text-violet-700 font-bold text-xs transition-all shadow-sm active:scale-95 disabled:opacity-60"
-            >
-              {messaging ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />}
-              Message
-            </button>
+  
+{/* ════════════════════════════════════════════════════════
+    FULL-WIDTH ACTION BUTTONS — other user only
+    3 cols: Message | Voice Call | Video Call
+════════════════════════════════════════════════════════ */}
+{!isOwnProfile && (
+  <div
+    className="anim-fade-up grid grid-cols-3 gap-2 sm:gap-3 pb-2"
+    style={{ animationDelay: '250ms' }}
+  >
+    {/* Message */}
+    <button
+      onClick={handleMessage} disabled={messaging}
+      className="flex flex-col items-center justify-center gap-1.5 py-3.5 sm:py-4 rounded-2xl font-bold text-xs transition-all active:scale-95 disabled:opacity-60"
+      style={{ background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
+      onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.color = '#6d28d9'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#374151'; }}
+    >
+      {messaging ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />}
+      Message
+    </button>
 
-            {/* Voice Call — NEW */}
-            <button
-              onClick={handleVoiceCall} disabled={voiceCalling}
-              className="flex flex-col items-center justify-center gap-1.5 py-3.5 sm:py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs transition-all shadow-lg shadow-emerald-200 active:scale-95 disabled:opacity-60"
-            >
-              {voiceCalling ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <PhoneCall className="w-4 h-4 sm:w-5 sm:h-5" />}
-              Voice Call
-            </button>
+    {/* Voice Call */}
+    <button
+      onClick={handleVoiceCall} disabled={voiceCalling}
+      className="flex flex-col items-center justify-center gap-1.5 py-3.5 sm:py-4 rounded-2xl font-bold text-xs transition-all active:scale-95 disabled:opacity-60"
+      style={{ background: '#10b981', color: 'white', boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}
+      onMouseEnter={e => { e.currentTarget.style.background = '#059669'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = '#10b981'; }}
+    >
+      {voiceCalling ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <PhoneCall className="w-4 h-4 sm:w-5 sm:h-5" />}
+      Voice Call
+    </button>
 
-            {/* Video Call */}
-            <button
-              onClick={handleCall} disabled={calling}
-              className="flex flex-col items-center justify-center gap-1.5 py-3.5 sm:py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-lg shadow-blue-200 active:scale-95 disabled:opacity-60"
-            >
-              {calling ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5" />}
-              Video Call
-            </button>
-          </div>
-        )}
+    {/* Video Call */}
+    <button
+      onClick={handleCall} disabled={calling}
+      className="flex flex-col items-center justify-center gap-1.5 py-3.5 sm:py-4 rounded-2xl font-bold text-xs transition-all active:scale-95 disabled:opacity-60"
+      style={{ background: '#2563eb', color: 'white', boxShadow: '0 4px 14px rgba(37,99,235,0.35)' }}
+      onMouseEnter={e => { e.currentTarget.style.background = '#1d4ed8'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = '#2563eb'; }}
+    >
+      {calling ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5" />}
+      Video Call
+    </button>
+  </div>
+)}
+
 
       </div>
     </div>

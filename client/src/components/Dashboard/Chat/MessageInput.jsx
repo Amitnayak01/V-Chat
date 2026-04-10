@@ -394,9 +394,11 @@ const MessageInput = ({
   return (
     <div
       ref={containerRef}
-      className={`bg-white border-t border-slate-200 shrink-0 relative overflow-hidden
-        ${isDragging ? 'ring-2 ring-inset ring-primary-400 bg-primary-50' : ''}
-        ${cancelled  ? 'bg-red-50' : ''}`}
+
+className={`bg-white border-t border-slate-200 shrink-0 relative
+  ${isDragging ? 'ring-2 ring-inset ring-primary-400 bg-primary-50' : ''}
+  ${cancelled  ? 'bg-red-50' : ''}`}
+
       style={{ transition: 'background 0.3s' }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
