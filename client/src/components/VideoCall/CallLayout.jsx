@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
 import VideoTile from './VideoTile';
 import ScreenShareView from './ScreenShareView';
 
@@ -22,26 +23,16 @@ function useContainerSize(ref) {
 }
 
 // ── Free-drag PIP hook ────────────────────────────────────────────────────────
-// Lets the user drag the PIP tile freely anywhere inside the container.
-// Clamps position so the tile never leaves the container bounds.
-// Returns { pos, isDragging, handlers }
-//   pos      : { x, y } — top-left corner of the PIP relative to container
-//   isDragging: boolean
-//   handlers : { onPointerDown, onPointerMove, onPointerUp }
 function useFreeDrag({ pipW, pipH, margin = 14, initialPos = null }) {
-  const [pos, setPos] = useState(initialPos ?? { x: null, y: null }); // null = use default (top-right)
+  const [pos, setPos] = useState(initialPos ?? { x: null, y: null });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 });
   const didMove   = useRef(false);
 
-  // Resolve actual pixel position; if still null fall back to top-right corner
   const resolvePos = useCallback((containerEl) => {
     if (pos.x !== null) return pos;
     const rect = containerEl?.getBoundingClientRect() ?? { width: 320, height: 568 };
-    return {
-      x: rect.width  - pipW - margin,
-      y: margin,
-    };
+    return { x: rect.width - pipW - margin, y: rect.height - pipH - margin };
   }, [pos, pipW, margin]);
 
   const clamp = useCallback((val, lo, hi) => Math.max(lo, Math.min(hi, val)), []);
@@ -51,7 +42,6 @@ function useFreeDrag({ pipW, pipH, margin = 14, initialPos = null }) {
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
     didMove.current = false;
-
     const current = resolvePos(containerEl);
     dragStart.current = { mx: e.clientX, my: e.clientY, px: current.x, py: current.y };
   }, [resolvePos]);
@@ -60,9 +50,7 @@ function useFreeDrag({ pipW, pipH, margin = 14, initialPos = null }) {
     if (!isDragging) return;
     const dx = e.clientX - dragStart.current.mx;
     const dy = e.clientY - dragStart.current.my;
-
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didMove.current = true;
-
     const rect = containerEl?.getBoundingClientRect() ?? { width: 320, height: 568 };
     setPos({
       x: clamp(dragStart.current.px + dx, margin, rect.width  - pipW - margin),
@@ -70,7 +58,7 @@ function useFreeDrag({ pipW, pipH, margin = 14, initialPos = null }) {
     });
   }, [isDragging, pipW, pipH, margin, clamp]);
 
-  const onPointerUp = useCallback((e) => {
+  const onPointerUp = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
   }, [isDragging]);
@@ -78,6 +66,86 @@ function useFreeDrag({ pipW, pipH, margin = 14, initialPos = null }) {
   return { pos, resolvePos, isDragging, didMove, onPointerDown, onPointerMove, onPointerUp };
 }
 
+// ── Spotlight overlay — shown when a tile is double-clicked ──────────────────
+// Renders the spotlighted tile fullscreen with a small strip of other tiles
+// along the bottom (similar to WhatsApp / Google Meet "pin" behaviour).
+const SpotlightView = memo(({
+  spotlightTile,
+  otherTiles,
+  isMuted,
+  isVideoOff,
+  activeSpeaker,
+  hostMutedIds,
+  onExit,
+  isLandscape,
+}) => (
+  <motion.div
+    key="spotlight"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    transition={{ duration: 0.2 }}
+    className="absolute inset-0 flex flex-col bg-black z-20"
+    style={{ gap: 4, padding: 4 }}
+  >
+    {/* ── Exit button ── */}
+    <button
+      onClick={onExit}
+      className="absolute top-3 left-3 z-30 flex items-center gap-1.5 px-3 py-1.5
+        rounded-full bg-black/60 backdrop-blur-sm border border-white/15
+        text-white text-xs font-semibold hover:bg-black/80 transition-all"
+    >
+      <X className="w-3.5 h-3.5" />
+      Exit spotlight
+    </button>
+
+    {/* ── Large spotlighted tile ── */}
+    <div className="flex-1 overflow-hidden rounded-2xl min-h-0">
+      <VideoTile
+        stream={spotlightTile.stream}
+        username={spotlightTile.username}
+        isMuted={spotlightTile.isLocal ? isMuted : hostMutedIds.has(spotlightTile.id)}
+        isVideoOff={spotlightTile.isLocal ? isVideoOff : false}
+        isLocal={spotlightTile.isLocal}
+        isMutedByHost={!spotlightTile.isLocal && hostMutedIds.has(spotlightTile.id)}
+        isActive={activeSpeaker === spotlightTile.id}
+        className="w-full h-full rounded-none"
+      />
+    </div>
+
+    {/* ── Thumbnail strip ── */}
+    {otherTiles.length > 0 && (
+      <div
+        className="flex overflow-x-auto shrink-0"
+        style={{ gap: 4, height: isLandscape ? 110 : 90 }}
+      >
+        {otherTiles.map(t => (
+          <div
+            key={t.id}
+            className="shrink-0 overflow-hidden rounded-xl cursor-pointer"
+            style={{ width: isLandscape ? 160 : 120 }}
+            onDoubleClick={() => {/* double-clicking a thumbnail spotlights it — handled in parent */}}
+          >
+            <VideoTile
+              stream={t.stream}
+              username={t.username}
+              isMuted={t.isLocal ? isMuted : hostMutedIds.has(t.id)}
+              isVideoOff={t.isLocal ? isVideoOff : false}
+              isLocal={t.isLocal}
+              isMutedByHost={!t.isLocal && hostMutedIds.has(t.id)}
+              isActive={activeSpeaker === t.id}
+              className="w-full h-full rounded-none"
+            />
+          </div>
+        ))}
+      </div>
+    )}
+  </motion.div>
+));
+
+SpotlightView.displayName = 'SpotlightView';
+
+// ─────────────────────────────────────────────────────────────────────────────
 const CallLayout = memo(({
   localStream,
   remoteStreams,
@@ -93,13 +161,13 @@ const CallLayout = memo(({
   onControlsReveal,
   hostMutedIds    = new Set(),
 }) => {
-  // ── ALL hooks declared unconditionally at the top ──────────────────────
   const containerRef  = useRef(null);
   const { isLandscape } = useContainerSize(containerRef);
 
-  const [swapped, setSwapped] = useState(false);
+  const [swapped,      setSwapped]      = useState(false);
+  // ── Spotlight state: id of the tile the user double-clicked, or null ──
+  const [spotlightId,  setSpotlightId]  = useState(null);
 
-  // PIP pixel dimensions (used for clamping)
   const PIP_W = 118;
   const PIP_H = 166;
 
@@ -128,6 +196,7 @@ const CallLayout = memo(({
     return null;
   }, [presenterUserId, screenStream, localUserId, localUsername, remoteMap, getUsername]);
 
+  // ── All tiles in one flat array — used by spotlight ──────────────────────
   const camTiles = useMemo(() => [
     { id: localUserId, stream: localStream, username: localUsername, isMuted, isVideoOff, isLocal: true, isMutedByHost: false },
     ...remoteEntries.map(([id, s]) => ({
@@ -137,7 +206,27 @@ const CallLayout = memo(({
     })),
   ], [localUserId, localStream, localUsername, isMuted, isVideoOff, remoteEntries, getUsername, hostMutedIds]);
 
-  // ── Conditional renders AFTER all hooks ───────────────────────────────
+  // ── Spotlight helper ──────────────────────────────────────────────────────
+  // Called from every VideoTile's onDoubleClick.
+  // If the tile is already spotlighted, exit spotlight instead.
+  const handleSpotlight = useCallback((id) => {
+    setSpotlightId(prev => (prev === id ? null : id));
+  }, []);
+
+  // Clear spotlight when a participant leaves
+  useEffect(() => {
+    if (spotlightId && !camTiles.find(t => t.id === spotlightId)) {
+      setSpotlightId(null);
+    }
+  }, [camTiles, spotlightId]);
+
+  // ── Derived spotlight data ────────────────────────────────────────────────
+  const spotlightTile = spotlightId ? camTiles.find(t => t.id === spotlightId) : null;
+  const otherTiles    = spotlightTile ? camTiles.filter(t => t.id !== spotlightId) : [];
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Conditional renders AFTER all hooks
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (screenInfo) {
     return (
@@ -153,19 +242,21 @@ const CallLayout = memo(({
     );
   }
 
-  // ── Solo ──────────────────────────────────────────────────────────────
+  // ── Solo ──────────────────────────────────────────────────────────────────
   if (totalCount === 1) {
     return (
       <div ref={containerRef} className="w-full h-full relative bg-black">
-        <VideoTile stream={localStream} username={localUsername}
+        <VideoTile
+          stream={localStream} username={localUsername}
           isMuted={isMuted} isVideoOff={isVideoOff} isLocal
-          className="w-full h-full rounded-none" />
+          className="w-full h-full rounded-none"
+        />
         <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
       </div>
     );
   }
 
-  // ── 2-person ──────────────────────────────────────────────────────────
+  // ── 2-person ──────────────────────────────────────────────────────────────
   if (totalCount === 2) {
     const remoteId     = remoteEntries[0][0];
     const remoteStream = remoteEntries[0][1];
@@ -181,9 +272,24 @@ const CallLayout = memo(({
     const pipId       = swapped ? remoteId     : localUserId;
 
     if (isLandscape) {
-      // Desktop: two equal side-by-side tiles
       return (
-        <div ref={containerRef} className="w-full h-full bg-black flex" style={{ gap: 4, padding: 4 }}>
+        <div ref={containerRef} className="w-full h-full relative bg-black flex" style={{ gap: 4, padding: 4 }}>
+          {/* Spotlight overlay */}
+          <AnimatePresence>
+            {spotlightTile && (
+              <SpotlightView
+                spotlightTile={spotlightTile}
+                otherTiles={otherTiles}
+                isMuted={isMuted}
+                isVideoOff={isVideoOff}
+                activeSpeaker={activeSpeaker}
+                hostMutedIds={hostMutedIds}
+                onExit={() => setSpotlightId(null)}
+                isLandscape={isLandscape}
+              />
+            )}
+          </AnimatePresence>
+
           {[
             { id: remoteId,    stream: remoteStream, username: getUsername(remoteId), isLocal: false },
             { id: localUserId, stream: localStream,  username: localUsername,         isLocal: true  },
@@ -196,6 +302,7 @@ const CallLayout = memo(({
                 isLocal={t.isLocal}
                 isMutedByHost={!t.isLocal && hostMutedIds.has(t.id)}
                 isActive={activeSpeaker === t.id}
+                onDoubleClick={() => handleSpotlight(t.id)}
                 className="w-full h-full rounded-none"
               />
             </div>
@@ -204,24 +311,39 @@ const CallLayout = memo(({
       );
     }
 
-    // Mobile portrait: remote full-screen + freely draggable self PIP
+    // Mobile portrait: PIP layout
     const pipPosition = resolvePos(containerRef.current);
 
     return (
       <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-black">
-        {/* Remote fills entire screen */}
+        {/* Spotlight overlay */}
+        <AnimatePresence>
+          {spotlightTile && (
+            <SpotlightView
+              spotlightTile={spotlightTile}
+              otherTiles={otherTiles}
+              isMuted={isMuted}
+              isVideoOff={isVideoOff}
+              activeSpeaker={activeSpeaker}
+              hostMutedIds={hostMutedIds}
+              onExit={() => setSpotlightId(null)}
+              isLandscape={isLandscape}
+            />
+          )}
+        </AnimatePresence>
+
         <VideoTile
           stream={mainStream} username={mainUsername}
           isMuted={mainIsLocal ? isMuted : hostMutedIds.has(mainId)}
           isVideoOff={mainIsLocal ? isVideoOff : false}
           isMutedByHost={!mainIsLocal && hostMutedIds.has(mainId)}
           isLocal={mainIsLocal} isActive={activeSpeaker === mainId}
+          onDoubleClick={() => handleSpotlight(mainId)}
           className="w-full h-full rounded-none"
         />
         <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
 
-        {/* Self PIP — freely draggable anywhere on screen */}
         <motion.div
           style={{
             position:   'absolute',
@@ -239,20 +361,11 @@ const CallLayout = memo(({
             overflow:   'hidden',
           }}
           whileTap={{ scale: 0.96 }}
-          onPointerDown={(e) => {
-            onPointerDown(e, containerRef.current);
-            onControlsReveal?.();
-          }}
-          onPointerMove={(e) => {
-            onPointerMove(e, containerRef.current);
-            onControlsReveal?.();
-          }}
-          onPointerUp={(e) => {
-            onPointerUp(e);
-          }}
-          onClick={() => {
-            if (!didMove.current) setSwapped(v => !v);
-          }}
+          onPointerDown={(e) => { onPointerDown(e, containerRef.current); onControlsReveal?.(); }}
+          onPointerMove={(e) => { onPointerMove(e, containerRef.current); onControlsReveal?.(); }}
+          onPointerUp={(e)   => { onPointerUp(e); }}
+          onClick={() => { if (!didMove.current) setSwapped(v => !v); }}
+          onDoubleClick={() => handleSpotlight(pipId)}
         >
           <VideoTile
             stream={pipStream} username={pipUsername}
@@ -267,13 +380,13 @@ const CallLayout = memo(({
     );
   }
 
-  // ── 3-person ──────────────────────────────────────────────────────────
+  // ── 3-person ──────────────────────────────────────────────────────────────
   if (totalCount === 3) {
     const active = remoteEntries.find(([uid]) => uid === activeSpeaker);
     const [featuredId, featuredStream] = active ?? remoteEntries[0];
     const featuredUsername = getUsername(featuredId);
 
-    const otherTiles = [
+    const otherTilesFor3 = [
       { id: localUserId, stream: localStream, username: localUsername, isLocal: true },
       ...remoteEntries
         .filter(([uid]) => uid !== featuredId)
@@ -281,20 +394,35 @@ const CallLayout = memo(({
     ];
 
     if (isLandscape) {
-      // Desktop: large featured left (2/3) + 2 stacked right (1/3)
       return (
-        <div ref={containerRef} className="w-full h-full bg-black flex" style={{ gap: 4, padding: 4 }}>
+        <div ref={containerRef} className="w-full h-full relative bg-black flex" style={{ gap: 4, padding: 4 }}>
+          <AnimatePresence>
+            {spotlightTile && (
+              <SpotlightView
+                spotlightTile={spotlightTile}
+                otherTiles={otherTiles}
+                isMuted={isMuted}
+                isVideoOff={isVideoOff}
+                activeSpeaker={activeSpeaker}
+                hostMutedIds={hostMutedIds}
+                onExit={() => setSpotlightId(null)}
+                isLandscape={isLandscape}
+              />
+            )}
+          </AnimatePresence>
+
           <div className="overflow-hidden rounded-2xl" style={{ flex: 2 }}>
             <VideoTile
               stream={featuredStream} username={featuredUsername}
               isMuted={hostMutedIds.has(featuredId)} isVideoOff={false}
               isLocal={false} isMutedByHost={hostMutedIds.has(featuredId)}
               isActive={activeSpeaker === featuredId}
+              onDoubleClick={() => handleSpotlight(featuredId)}
               className="w-full h-full rounded-none"
             />
           </div>
           <div className="flex flex-col" style={{ flex: 1, gap: 4 }}>
-            {otherTiles.map(t => (
+            {otherTilesFor3.map(t => (
               <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
                 <VideoTile
                   stream={t.stream} username={t.username}
@@ -303,6 +431,7 @@ const CallLayout = memo(({
                   isLocal={t.isLocal}
                   isMutedByHost={!t.isLocal && hostMutedIds.has(t.id)}
                   isActive={activeSpeaker === t.id}
+                  onDoubleClick={() => handleSpotlight(t.id)}
                   className="w-full h-full rounded-none"
                 />
               </div>
@@ -312,11 +441,26 @@ const CallLayout = memo(({
       );
     }
 
-    // Mobile portrait: 2 equal top, 1 full-width bottom
+    // Mobile portrait: 2 top + 1 bottom
     return (
-      <div ref={containerRef} className="w-full h-full bg-black flex flex-col" style={{ gap: 4, padding: 4 }}>
+      <div ref={containerRef} className="w-full h-full relative bg-black flex flex-col" style={{ gap: 4, padding: 4 }}>
+        <AnimatePresence>
+          {spotlightTile && (
+            <SpotlightView
+              spotlightTile={spotlightTile}
+              otherTiles={otherTiles}
+              isMuted={isMuted}
+              isVideoOff={isVideoOff}
+              activeSpeaker={activeSpeaker}
+              hostMutedIds={hostMutedIds}
+              onExit={() => setSpotlightId(null)}
+              isLandscape={isLandscape}
+            />
+          )}
+        </AnimatePresence>
+
         <div className="flex flex-1" style={{ gap: 4 }}>
-          {otherTiles.map(t => (
+          {otherTilesFor3.map(t => (
             <div key={t.id} className="flex-1 overflow-hidden rounded-2xl">
               <VideoTile
                 stream={t.stream} username={t.username}
@@ -325,6 +469,7 @@ const CallLayout = memo(({
                 isLocal={t.isLocal}
                 isMutedByHost={!t.isLocal && hostMutedIds.has(t.id)}
                 isActive={activeSpeaker === t.id}
+                onDoubleClick={() => handleSpotlight(t.id)}
                 className="w-full h-full rounded-none"
               />
             </div>
@@ -336,6 +481,7 @@ const CallLayout = memo(({
             isMuted={hostMutedIds.has(featuredId)} isVideoOff={false}
             isLocal={false} isMutedByHost={hostMutedIds.has(featuredId)}
             isActive={activeSpeaker === featuredId}
+            onDoubleClick={() => handleSpotlight(featuredId)}
             className="w-full h-full rounded-none"
           />
         </div>
@@ -343,14 +489,14 @@ const CallLayout = memo(({
     );
   }
 
-  // ── 4+ person: equal grid ─────────────────────────────────────────────
+  // ── 4+ person: equal grid ─────────────────────────────────────────────────
   const cols = camTiles.length <= 4 ? 2 : isLandscape ? 3 : 2;
   const rows = Math.ceil(camTiles.length / cols);
 
   return (
     <div
       ref={containerRef}
-      className="w-full h-full bg-black"
+      className="w-full h-full relative bg-black"
       style={{
         display:             'grid',
         gridTemplateColumns: `repeat(${cols}, 1fr)`,
@@ -358,12 +504,30 @@ const CallLayout = memo(({
         gap: 4, padding: 4,
       }}
     >
+      {/* Spotlight overlay */}
+      <AnimatePresence>
+        {spotlightTile && (
+          <SpotlightView
+            spotlightTile={spotlightTile}
+            otherTiles={otherTiles}
+            isMuted={isMuted}
+            isVideoOff={isVideoOff}
+            activeSpeaker={activeSpeaker}
+            hostMutedIds={hostMutedIds}
+            onExit={() => setSpotlightId(null)}
+            isLandscape={isLandscape}
+          />
+        )}
+      </AnimatePresence>
+
       {camTiles.map(p => (
         <VideoTile
-          key={p.id} stream={p.stream} username={p.username}
+          key={p.id}
+          stream={p.stream} username={p.username}
           isMuted={p.isMuted} isVideoOff={p.isVideoOff}
           isLocal={p.isLocal} isMutedByHost={p.isMutedByHost}
           isActive={activeSpeaker === p.id}
+          onDoubleClick={() => handleSpotlight(p.id)}
           className="rounded-2xl"
         />
       ))}

@@ -433,7 +433,10 @@ const handleVoiceCall = () => {
                   <button
                     onClick={handleMessage} disabled={messaging}
                     title="Send message"
-                    className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all active:scale-95 disabled:opacity-60"
+                    className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 text-white text-xs font-bold rounded-xl transition-all active:scale-95 disabled:opacity-60"
+style={{ background: '#7c3aed', boxShadow: '0 4px 10px rgba(124,58,237,0.3)' }}
+onMouseEnter={e => { e.currentTarget.style.background = '#6d28d9'; }}
+onMouseLeave={e => { e.currentTarget.style.background = '#7c3aed'; }}
                   >
                     {messaging
                       ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -682,9 +685,11 @@ const handleVoiceCall = () => {
     <button
       onClick={handleMessage} disabled={messaging}
       className="flex flex-col items-center justify-center gap-1.5 py-3.5 sm:py-4 rounded-2xl font-bold text-xs transition-all active:scale-95 disabled:opacity-60"
-      style={{ background: 'white', border: '1px solid #e2e8f0', color: '#374151' }}
-      onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.color = '#6d28d9'; }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#374151'; }}
+
+    style={{ background: '#7c3aed', color: 'white', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}
+onMouseEnter={e => { e.currentTarget.style.background = '#6d28d9'; }}
+onMouseLeave={e => { e.currentTarget.style.background = '#7c3aed'; }}
+
     >
       {messaging ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />}
       Message
